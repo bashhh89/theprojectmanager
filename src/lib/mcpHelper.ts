@@ -369,8 +369,41 @@ export function parseMCPResponse(response: any): {
     
     // Handle case where response is already a string
     if (typeof response === 'string') {
-      text = response;
-      console.log("Response is a string");
+      // Check if it's a JSON string containing structured message
+      if ((response.startsWith('[{') || response.startsWith('{"')) && 
+          (response.includes('"type":"text"') || response.includes('"content":'))) {
+        try {
+          const parsed = JSON.parse(response);
+          
+          // Handle array of content items
+          if (Array.isArray(parsed)) {
+            const textItems = parsed.filter(item => 
+              item.type === "text" && typeof item.content === "string"
+            );
+            
+            if (textItems.length > 0) {
+              text = textItems.map(item => item.content).join("\n");
+              console.log("Extracted text from JSON array:", text.substring(0, 50) + "...");
+            } else {
+              text = response;
+            }
+          } 
+          // Handle object with content property
+          else if (parsed.content && typeof parsed.content === "string") {
+            text = parsed.content;
+            console.log("Extracted content from JSON object:", text.substring(0, 50) + "...");
+          } else {
+            text = response;
+          }
+        } catch (e) {
+          // If parsing fails, use the original response
+          text = response;
+          console.log("Response is a string (not parseable JSON)");
+        }
+      } else {
+        text = response;
+        console.log("Response is a plain string");
+      }
     }
     // Handle case where response contains text field
     else if (response && typeof response.text === 'string') {
@@ -386,6 +419,17 @@ export function parseMCPResponse(response: any): {
     else if (response && typeof response.message === 'string') {
       text = response.message;
       console.log("Using response.message");
+    }
+    // Handle case where response has a choices array (like OpenAI format)
+    else if (response && Array.isArray(response.choices) && response.choices.length > 0) {
+      const choice = response.choices[0];
+      if (choice.message && typeof choice.message.content === 'string') {
+        text = choice.message.content;
+        console.log("Using response.choices[0].message.content");
+      } else if (typeof choice.text === 'string') {
+        text = choice.text;
+        console.log("Using response.choices[0].text");
+      }
     }
     // Handle unexpected response format
     else {

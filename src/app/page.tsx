@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Simple test component for the pirate agent
+// Commented out due to build issues with Next.js 14
+/*
 function TestPirateAgent() {
   const [input, setInput] = useState("");
   const [response, setResponse] = useState("");
@@ -83,6 +85,7 @@ function TestPirateAgent() {
     </div>
   );
 }
+*/
 
 export default function Home() {
   const setDarkMode = useSettingsStore((state) => state.setDarkMode)
@@ -159,9 +162,14 @@ export default function Home() {
           <p className="text-sm text-muted-foreground mb-4">
             Just want to see how it works?
           </p>
-          <Link href="/agents">
-            <Button variant="secondary">Continue as Guest</Button>
-          </Link>
+          <div className="flex flex-wrap gap-4 justify-center">
+            <Button variant="secondary" asChild>
+              <Link href="/agents">Continue as Guest</Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/test-tools">Testing Tools</Link>
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4 items-center">
@@ -169,7 +177,7 @@ export default function Home() {
             <Link href="/chat">Go to Chat</Link>
           </Button>
           
-          <TestPirateAgent />
+          {/* <TestPirateAgent /> */}
         </div>
       </div>
     </main>

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { 
   generateText, 
   processConversationHistory, 
-  TextGenerationRequest 
+  TextGenerationRequest,
+  AVAILABLE_MODELS 
 } from "@/lib/pollinationsApi";
 import { createMCPSystemPrompt, parseMCPResponse } from "@/lib/mcpHelper";
 import { supabase } from "@/lib/supabaseClient";
@@ -55,6 +56,55 @@ async function getServerSupabaseClient() {
   );
 }
 
+// Helper function to ensure text messages are properly formatted
+function sanitizeMessage(message: string): string {
+  try {
+    // Check if the message is a JSON string and parse it if needed
+    if (typeof message === 'string' && 
+        (message.startsWith('[{') || message.startsWith('{"')) &&
+        (message.includes('"type":"text"') || message.includes('"content":'))) {
+      
+      let parsed;
+      try {
+        parsed = JSON.parse(message);
+      } catch (e) {
+        // If parsing fails, return the original message
+        return message;
+      }
+
+      // Handle various JSON structures
+      if (Array.isArray(parsed)) {
+        // Array of content items
+        const textItems = parsed.filter(item => 
+          item.type === "text" && typeof item.content === "string"
+        );
+        
+        if (textItems.length > 0) {
+          return textItems.map(item => item.content).join("\n");
+        }
+      } else if (parsed.content && typeof parsed.content === "string") {
+        // Object with content property
+        return parsed.content;
+      }
+    }
+    
+    return message;
+  } catch (e) {
+    console.error("Error sanitizing message:", e);
+    return message;
+  }
+}
+
+// Helper to check if a model is supported by Google Gemini
+function isGeminiModel(model: string): boolean {
+  // Only models starting with 'gemini' or in the explicit list are valid for Gemini API
+  return model.includes('gemini') || 
+         model === 'claude-3' || 
+         model === 'chat-bison-001' || 
+         model === 'direct-gemini-pro' || 
+         model === 'direct-gemini-flash';
+}
+
 // Make sure we're using the newer Next.js App Router handler signature
 export async function POST(req: NextRequest) {
   console.log("API route /api/chat called");
@@ -71,7 +121,7 @@ export async function POST(req: NextRequest) {
     }
     
     // Create a mutable model variable that can be changed if needed
-    let model = initialModel;
+    let model = initialModel || 'gemini-1.5-flash'; // Default to Gemini if not specified
     
     // Get only user messages to determine the lastUserMessage
     const userMessages = messages.filter(msg => msg.role === "user");
@@ -180,13 +230,50 @@ export async function POST(req: NextRequest) {
     // Check if the original model is one that respects system prompts
     const modelRespectsSystemPrompt = model && SYSTEM_PROMPT_RESPECTING_MODELS.includes(model.toLowerCase());
 
-    // Force routing to Google API only if the model doesn't respect system prompts
-    // and we have a system prompt to respect
-    const shouldUseGoogle = 
-      (systemPrompt && !modelRespectsSystemPrompt) || 
-      (model && (model.includes('gemini') || model === 'claude-3' || model === 'chat-bison-001' || model === 'direct-gemini-pro' || model === 'direct-gemini-flash'));
+    // Check if model should use Google Gemini API
+    const shouldUseGemini = isGeminiModel(model);
 
-    if (shouldUseGoogle) {
+    // Use Pollinations API with system prompt respecting models or when Gemini isn't specified
+    if (modelRespectsSystemPrompt || !shouldUseGemini) {
+      console.log("API Route: Using Pollinations API with model:", model);
+      
+      try {
+        // Process messages for the Pollinations API
+        const { processedMessages, contextString } = processConversationHistory(messages);
+        
+        // Prepare the request for text generation
+        const request: TextGenerationRequest = {
+          messages: processedMessages,
+          model: model,
+          system_prompt: finalSystemPrompt,
+          temperature: 0.7,
+          max_tokens: 1000
+        };
+        
+        // Call the Pollinations API client
+        const response = await generateText(request);
+        
+        // Extract any MCP directives (for image or audio generation)
+        const { message, mcpDirectives } = parseMCPResponse(response.text);
+        
+        // Return the response
+        return NextResponse.json({
+          success: true,
+          message: message,
+          mcpDirectives: mcpDirectives
+        });
+      } catch (error: any) {
+        console.error("Error generating text with Pollinations API:", error);
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: error.message || "Failed to generate response from Pollinations API" 
+          }, 
+          { status: 500 }
+        );
+      }
+    } else if (shouldUseGemini) {
+      // Use the Google Gemini API directly
       console.log("API Route: Routing to Direct Google Gemini API.");
       
       // Use the API key stored securely in environment variables
@@ -200,157 +287,100 @@ export async function POST(req: NextRequest) {
       }
 
       try {
+        // Initialize the Google Generative AI SDK
         const genAI = new GoogleGenerativeAI(googleApiKey);
 
-        // Basic safety settings - adjust as needed
-        const safetySettings = [
-          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        ];
-
-        // Map the model ID to the correct Google model ID
-        let googleModelId;
-        if (model === 'direct-gemini-flash') {
-          googleModelId = 'gemini-1.5-flash-latest';
-        } else if (model === 'google-gemini-pro') {
-          googleModelId = 'gemini-1.5-pro-latest';
-        } else {
-          // Use the model ID directly if it's already a Google model ID
-          googleModelId = model;
-        }
-
-        console.log('API Route: Using Google model ID:', googleModelId);
-
-        const geminiApiModel = genAI.getGenerativeModel({
-          model: googleModelId,
-          systemInstruction: finalSystemPrompt || undefined, // Pass system prompt here
-          safetySettings: safetySettings,
-        });
-
-        // Transform messages from OpenAI format to Gemini format
-        const geminiMessages = transformMessagesForGemini(messages);
-
-        console.log("API Route (Gemini): Sending messages:", JSON.stringify(geminiMessages, null, 2).substring(0, 500) + "...");
-
-        // Make the API call
-        const result = await geminiApiModel.generateContent({
-          contents: geminiMessages,
-          // Add generationConfig if needed
-          // generationConfig: { temperature: 0.7, maxOutputTokens: 1000 }
-        });
-
-        const response = result.response;
-
-        // Check for safety blocks or empty responses
-        if (!response || !response.candidates || response.candidates.length === 0 || !response.text) {
-          console.warn('API Route (Gemini): Response was empty or blocked.', response?.promptFeedback);
-          let blockReason = response?.promptFeedback?.blockReason || 'No content';
-          let safetyRatings = response?.candidates?.[0]?.safetyRatings || [];
-          return NextResponse.json(
-            { success: false, error: `Blocked by safety settings or no content generated. Reason: ${blockReason}`, details: safetyRatings }, 
-            { status: 400 }
-          );
-        }
-
-        const textResponse = response.text();
-
-        console.log('API Route: Successfully received response from Google Gemini.');
+        // Select the appropriate Gemini model
+        let geminiModelName = 'gemini-1.5-pro-latest'; // Default model
         
-        // Return in the format the client expects
+        // Map the selected model to an actual Gemini model ID
+        if (model.includes('gemini')) {
+          geminiModelName = model;
+        } else if (model === 'direct-gemini-pro') {
+          geminiModelName = 'gemini-1.5-pro-latest';
+        } else if (model === 'direct-gemini-flash') {
+          geminiModelName = 'gemini-1.5-flash-latest';
+        }
+        
+        console.log("Using Gemini model:", geminiModelName);
+        
+        const geminiModel = genAI.getGenerativeModel({ 
+          model: geminiModelName,
+          systemInstruction: finalSystemPrompt 
+        });
+
+        // Transform messages into Gemini format
+        const geminiMessages = transformMessagesForGemini(messages);
+        
+        // Generate content
+        const result = await geminiModel.generateContent({
+          contents: geminiMessages,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 2000,
+          },
+        });
+
+        // Extract the response text
+        const responseText = result.response.text();
+        
+        // Parse and extract any MCP directives (for image or audio generation)
+        const { message, mcpDirectives } = parseMCPResponse(responseText);
+        
+        // Return the response
         return NextResponse.json({
           success: true,
-          message: textResponse,
-          mcpDirectives: [], // No MCP directives for Gemini responses
-          modelUsed: "Google " + googleModelId // Add information about which model was actually used
+          message: message,
+          mcpDirectives: mcpDirectives
         });
-
       } catch (error: any) {
-        console.error('API Route: Error calling Google Gemini API:', error);
+        console.error("Error generating text with Google Gemini API:", error);
         return NextResponse.json(
-          { success: false, error: `Failed to fetch response from Google Gemini: ${error.message || String(error)}` }, 
+          { 
+            success: false, 
+            error: `Failed to fetch response from Google Gemini: ${error.message || "Unknown error"}` 
+          }, 
           { status: 500 }
         );
       }
     } else {
-      // Log which model we're using
-      const modelToUse = modelRespectsSystemPrompt ? model : (systemPrompt ? 'llama' : model);
-      console.log(`API Route: Using Pollinations API with model: ${modelToUse || 'llama'} (${modelRespectsSystemPrompt ? 'respects' : 'doesn\'t respect'} system prompts)`);
-      
-      // Process conversation history to ensure proper format
-      const { processedMessages, contextString } = processConversationHistory(messages);
-      
-      // Create a messages array with system message as the first item
-      const finalSystemPrompt = systemPrompt;
-      
-      // ENSURE THIS IS THE FORMAT USED - This is the standard OpenAI format
-      const messagesForPollinations = finalSystemPrompt
-        ? [{ role: 'system', content: finalSystemPrompt }, ...messages.filter(m => m.role !== 'system')]
-        : messages;
-      
-      // Create request body for Pollinations API - NO top-level system_prompt
-      const requestBody: TextGenerationRequest = {
-        messages: messagesForPollinations,
-        model: modelToUse || "llama", // Use llama by default for system prompts
-        temperature: 0.7,
-        private: true
-      };
-      
-      console.log("API Route - Sending request to Pollinations API with model:", requestBody.model);
+      // If we can't determine which API to use, default to Pollinations
+      console.log("API Route: Using Pollinations API with default model as fallback");
       
       try {
-        // Call Pollinations API  
-        const response = await generateText(requestBody);
+        const { processedMessages } = processConversationHistory(messages);
         
-        console.log("API Route - Received RAW response from Pollinations API:", 
-          typeof response === 'string' 
-            ? (response as string).substring(0, 200) + "..." 
-            : (typeof response.text === 'string'
-                ? response.text.substring(0, 400) + "..."
-                : JSON.stringify(response, null, 2).substring(0, 400) + "..."));
+        const response = await generateText({
+          messages: processedMessages,
+          model: 'llama', // Default to a model that respects system prompts
+          system_prompt: finalSystemPrompt
+        });
         
-        if (!response || !response.text) {
-          console.error("Invalid or empty response from Pollinations API:", response);
-          return NextResponse.json(
-            { success: false, error: "Received invalid response from AI service" },
-            { status: 500 }
-          );
-        }
+        const { message, mcpDirectives } = parseMCPResponse(response.text);
         
-        // Parse MCP directives from the response
-        const { message, mcpDirectives } = parseMCPResponse(response);
-        
-        // Return successful response with message and directives
         return NextResponse.json({
           success: true,
-          message,
-          mcpDirectives,
-          modelUsed: "Pollinations " + (modelToUse || "llama") // Add information about which model was actually used
+          message: message,
+          mcpDirectives: mcpDirectives
         });
-      } catch (apiError: any) {
-        // Handle specific Pollinations API errors
-        if (apiError.message && apiError.message.includes("More credits are required")) {
-          return NextResponse.json(
-            { 
-              success: false, 
-              error: "Your Pollinations account needs more credits to process this request."
-            },
-            { status: 402 }  // 402 Payment Required
-          );
-        }
-        
-        // Re-throw for general error handling
-        throw apiError;
+      } catch (error: any) {
+        console.error("Error generating text with fallback model:", error);
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: error.message || "Failed to generate response with fallback model" 
+          }, 
+          { status: 500 }
+        );
       }
     }
   } catch (error: any) {
-    console.error("Error in chat API route:", error);
+    console.error("Unexpected error in chat API route:", error);
     return NextResponse.json(
       { 
         success: false, 
-        error: error.message || "An error occurred while processing your request"
-      },
+        error: error.message || "Unexpected error processing request" 
+      }, 
       { status: 500 }
     );
   }

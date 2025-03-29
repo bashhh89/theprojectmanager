@@ -1,9 +1,30 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSettingsStore } from "@/store/settingsStore";
 import { toast } from "@/components/ui/use-toast";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+  DragStartEvent,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { restrictToParentElement } from "@dnd-kit/modifiers";
+import { UserPlus, MoreHorizontal, Plus, X, Clock, CheckCircle, AlertCircle, PenLine } from "lucide-react";
 
+// Types
 interface Lead {
   id: string;
   name: string;
@@ -20,19 +41,184 @@ interface Lead {
   };
 }
 
+type StatusColumn = {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  color: string;
+};
+
+// Draggable Lead Card Component
+function LeadCard({ 
+  lead, 
+  onEdit 
+}: { 
+  lead: Lead; 
+  onEdit: (lead: Lead) => void;
+}) {
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <Card className="mb-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow">
+      <CardContent className="p-4">
+        <div className="flex justify-between items-start">
+          <h3 className="font-medium text-sm">{lead.name}</h3>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(lead);
+            }}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <PenLine size={14} />
+          </button>
+        </div>
+        
+        <div className="mt-2 text-xs text-muted-foreground line-clamp-2">
+          {lead.initial_message || lead.notes || "No details available"}
+        </div>
+        
+        <div className="mt-3 flex justify-between items-center">
+          <div className="flex items-center">
+            <Clock size={12} className="text-muted-foreground mr-1" />
+            <span className="text-xs text-muted-foreground">{formatDate(lead.created_at)}</span>
+          </div>
+          {lead.agents?.name && (
+            <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+              {lead.agents.name}
+            </span>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Sortable Container for each status column
+function KanbanColumn({ 
+  status, 
+  leads, 
+  onEdit 
+}: { 
+  status: StatusColumn; 
+  leads: Lead[]; 
+  onEdit: (lead: Lead) => void;
+}) {
+  return (
+    <div className="kanban-column flex-1 min-w-[250px] bg-muted/30 rounded-lg p-3">
+      <div className="flex items-center mb-3">
+        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${status.color} mr-2`}>
+          {status.icon}
+        </div>
+        <h3 className="font-medium">{status.name}</h3>
+        <span className="ml-2 text-xs bg-muted px-2 py-0.5 rounded-full">
+          {leads.length}
+        </span>
+      </div>
+      <div className="kanban-cards space-y-2">
+        {leads.map((lead) => (
+          <LeadCard key={lead.id} lead={lead} onEdit={onEdit} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Main component
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [newNotes, setNewNotes] = useState<string>("");
   const [newStatus, setNewStatus] = useState<string>("");
+  const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
 
   const { agents } = useSettingsStore();
+
+  // Define status columns
+  const statusColumns: StatusColumn[] = [
+    { 
+      id: "new", 
+      name: "New", 
+      description: "Newly created leads",
+      icon: <AlertCircle size={14} className="text-white" />,
+      color: "bg-blue-500"
+    },
+    { 
+      id: "contacted", 
+      name: "Contacted", 
+      description: "Leads that have been reached out to",
+      icon: <Clock size={14} className="text-white" />,
+      color: "bg-yellow-500"
+    },
+    { 
+      id: "qualified", 
+      name: "Qualified", 
+      description: "Leads that have been qualified",
+      icon: <CheckCircle size={14} className="text-white" />,
+      color: "bg-purple-500"
+    },
+    { 
+      id: "converted", 
+      name: "Converted", 
+      description: "Successfully converted leads",
+      icon: <CheckCircle size={14} className="text-white" />,
+      color: "bg-green-500"
+    },
+    { 
+      id: "closed", 
+      name: "Closed", 
+      description: "Closed leads (not converted)",
+      icon: <X size={14} className="text-white" />,
+      color: "bg-gray-500"
+    }
+  ];
+
+  // Set up DnD sensors
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    })
+  );
+
+  // Group leads by status
+  const leadsByStatus = useMemo(() => {
+    const grouped: { [key: string]: Lead[] } = {};
+    
+    // Initialize all status columns
+    statusColumns.forEach(col => {
+      grouped[col.id] = [];
+    });
+    
+    // Group leads by status
+    leads.forEach(lead => {
+      if (grouped[lead.status]) {
+        grouped[lead.status].push(lead);
+      } else {
+        // If status doesn't match any column, put in "new"
+        grouped["new"].push(lead);
+      }
+    });
+    
+    return grouped;
+  }, [leads, statusColumns]);
 
   // Fetch leads
   const fetchLeads = async () => {
@@ -72,15 +258,87 @@ export default function LeadsPage() {
     fetchLeads();
   }, [currentPage, selectedAgentId]);
 
-  // Update lead status
-  const updateLeadStatus = async (id: string, status: "new" | "contacted" | "qualified" | "converted" | "closed", notes?: string) => {
+  // Handle drag start
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string);
+  };
+
+  // Handle drag end
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragId(null);
+    
+    const { active, over } = event;
+    
+    // If no valid drop target or didn't move, do nothing
+    if (!over || active.id === over.id) return;
+    
+    // Find the dropped lead
+    const draggedLead = leads.find(lead => lead.id === active.id);
+    
+    // Get the target container (status column)
+    const targetStatus = over.id as string;
+    
+    if (draggedLead && targetStatus && draggedLead.status !== targetStatus) {
+      try {
+        // Optimistically update UI
+        setLeads(prevLeads => 
+          prevLeads.map(lead => 
+            lead.id === draggedLead.id ? { ...lead, status: targetStatus as any } : lead
+          )
+        );
+        
+        // Call API to update status
+        const response = await fetch("/api/leads", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            id: draggedLead.id, 
+            status: targetStatus 
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to update lead status");
+        }
+        
+        toast({
+          title: "Status Updated",
+          description: `Lead moved to ${statusColumns.find(col => col.id === targetStatus)?.name}`,
+        });
+      } catch (err: any) {
+        // Revert the optimistic update
+        setLeads(prevLeads => 
+          prevLeads.map(lead => 
+            lead.id === draggedLead.id ? { ...lead, status: draggedLead.status } : lead
+          )
+        );
+        
+        toast({
+          title: "Error",
+          description: err.message || "Failed to update lead status",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  // Update lead status and notes
+  const updateLead = async () => {
+    if (!editingLead) return;
+    
     try {
       const response = await fetch("/api/leads", {
-        method: "PATCH",
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ id, status, notes }),
+        body: JSON.stringify({ 
+          id: editingLead.id, 
+          status: newStatus || editingLead.status, 
+          notes: newNotes || editingLead.notes 
+        }),
       });
 
       const data = await response.json();
@@ -92,13 +350,19 @@ export default function LeadsPage() {
       // Update lead in state
       setLeads((prevLeads) =>
         prevLeads.map((lead) =>
-          lead.id === id ? { ...lead, status, notes: notes || lead.notes } : lead
+          lead.id === editingLead.id 
+            ? { 
+                ...lead, 
+                status: newStatus || lead.status, 
+                notes: newNotes || lead.notes 
+              } 
+            : lead
         )
       );
 
       toast({
         title: "Success",
-        description: "Lead status updated",
+        description: "Lead updated successfully",
       });
 
       // Reset editing state
@@ -108,7 +372,7 @@ export default function LeadsPage() {
     } catch (err: any) {
       toast({
         title: "Error",
-        description: err.message || "Failed to update lead status",
+        description: err.message || "Failed to update lead",
         variant: "destructive",
       });
     }
@@ -138,6 +402,11 @@ export default function LeadsPage() {
       // Remove lead from state
       setLeads((prevLeads) => prevLeads.filter((lead) => lead.id !== id));
 
+      // Close edit modal if deleting the lead being edited
+      if (editingLead?.id === id) {
+        setEditingLead(null);
+      }
+
       toast({
         title: "Success",
         description: "Lead deleted successfully",
@@ -151,66 +420,38 @@ export default function LeadsPage() {
     }
   };
 
-  // Filter leads by status
-  const filteredLeads =
-    selectedStatus === "all"
-      ? leads
-      : leads.filter((lead) => lead.status === selectedStatus);
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + " " + date.toLocaleTimeString();
-  };
-
-  // Get status badge class
-  const getStatusBadgeClass = (status: string) => {
-    const baseClasses = "px-2 py-1 rounded-full text-xs font-medium";
-
-    switch (status) {
-      case "new":
-        return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200`;
-      case "contacted":
-        return `${baseClasses} bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200`;
-      case "qualified":
-        return `${baseClasses} bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200`;
-      case "converted":
-        return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200`;
-      case "closed":
-        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`;
-      default:
-        return baseClasses;
-    }
-  };
+  // Find the active drag lead
+  const activeDragLead = useMemo(() => {
+    if (!activeDragId) return null;
+    return leads.find(lead => lead.id === activeDragId);
+  }, [activeDragId, leads]);
 
   return (
     <div className="container mx-auto p-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Leads Management</h1>
+          <h1 className="text-2xl font-bold">Leads Pipeline</h1>
           <p className="text-muted-foreground">
-            View and manage leads from your agents
+            Manage and track your leads through the sales process
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          {/* Status filter */}
-          <select
-            className="bg-background border rounded-md px-3 py-1 text-sm"
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
+        <div className="flex flex-wrap gap-2">
+          {/* View Toggle */}
+          <Tabs 
+            value={viewMode} 
+            onValueChange={(value) => setViewMode(value as "kanban" | "list")}
+            className="mr-2"
           >
-            <option value="all">All Statuses</option>
-            <option value="new">New</option>
-            <option value="contacted">Contacted</option>
-            <option value="qualified">Qualified</option>
-            <option value="converted">Converted</option>
-            <option value="closed">Closed</option>
-          </select>
+            <TabsList className="grid w-[200px] grid-cols-2">
+              <TabsTrigger value="kanban">Kanban</TabsTrigger>
+              <TabsTrigger value="list">List</TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           {/* Agent filter */}
           <select
-            className="bg-background border rounded-md px-3 py-1 text-sm"
+            className="bg-background border rounded-md px-3 py-1 text-sm h-9"
             value={selectedAgentId}
             onChange={(e) => {
               setSelectedAgentId(e.target.value);
@@ -226,318 +467,256 @@ export default function LeadsPage() {
           </select>
 
           {/* Refresh button */}
-          <button
-            className="bg-primary text-primary-foreground rounded-md px-3 py-1 text-sm flex items-center gap-1"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={fetchLeads}
             disabled={loading}
+            className="h-9"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
-            </svg>
-            <span>{loading ? "Loading..." : "Refresh"}</span>
-          </button>
+            {loading ? "Loading..." : "Refresh"}
+          </Button>
+
+          {/* Add new lead button */}
+          <Button
+            size="sm"
+            className="h-9"
+            onClick={() => {
+              // Placeholder for new lead functionality
+              toast({
+                title: "Coming Soon",
+                description: "Add Lead functionality will be available soon",
+              });
+            }}
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add Lead
+          </Button>
         </div>
       </div>
 
-      {/* Lead stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        <div className="bg-background border rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm text-muted-foreground">Total Leads</h3>
-          <p className="text-2xl font-bold">{leads.length}</p>
-        </div>
-        <div className="bg-background border rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm text-muted-foreground">New</h3>
-          <p className="text-2xl font-bold text-blue-600">
-            {leads.filter((l) => l.status === "new").length}
-          </p>
-        </div>
-        <div className="bg-background border rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm text-muted-foreground">Contacted</h3>
-          <p className="text-2xl font-bold text-yellow-600">
-            {leads.filter((l) => l.status === "contacted").length}
-          </p>
-        </div>
-        <div className="bg-background border rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm text-muted-foreground">Qualified</h3>
-          <p className="text-2xl font-bold text-purple-600">
-            {leads.filter((l) => l.status === "qualified").length}
-          </p>
-        </div>
-        <div className="bg-background border rounded-lg p-4 shadow-sm">
-          <h3 className="text-sm text-muted-foreground">Converted</h3>
-          <p className="text-2xl font-bold text-green-600">
-            {leads.filter((l) => l.status === "converted").length}
-          </p>
-        </div>
-      </div>
-
-      {/* Lead edit modal */}
-      {editingLead && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-background rounded-lg shadow-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-4 border-b">
-              <h2 className="text-lg font-semibold">Update Lead Status</h2>
-            </div>
-
-            <div className="p-4">
-              <div className="mb-4">
-                <h3 className="font-medium">{editingLead.name}</h3>
-                <p className="text-sm text-muted-foreground">{editingLead.email}</p>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Status</label>
-                <select
-                  className="w-full bg-background border rounded-md p-2"
-                  value={newStatus || editingLead.status}
-                  onChange={(e) => setNewStatus(e.target.value)}
-                >
-                  <option value="new">New</option>
-                  <option value="contacted">Contacted</option>
-                  <option value="qualified">Qualified</option>
-                  <option value="converted">Converted</option>
-                  <option value="closed">Closed</option>
-                </select>
-              </div>
-
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Notes</label>
-                <textarea
-                  className="w-full bg-background border rounded-md p-2 min-h-[100px]"
-                  value={newNotes || editingLead.notes || ""}
-                  onChange={(e) => setNewNotes(e.target.value)}
-                  placeholder="Add notes about this lead..."
-                />
-              </div>
-            </div>
-
-            <div className="p-4 border-t flex justify-end gap-2">
-              <button
-                className="px-4 py-2 border rounded-md hover:bg-muted"
-                onClick={() => setEditingLead(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-md"
-                onClick={() =>
-                  updateLeadStatus(
-                    editingLead.id,
-                    (newStatus || editingLead.status) as "new" | "contacted" | "qualified" | "converted" | "closed",
-                    newNotes || editingLead.notes
-                  )
-                }
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 p-4 rounded-md mb-6">
+          {error}
         </div>
       )}
 
-      {/* Show loading state */}
-      {loading ? (
-        <div className="text-center py-8">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          <p className="mt-2 text-muted-foreground">Loading leads...</p>
-        </div>
-      ) : error ? (
-        // Show error state
-        <div className="text-center py-8 text-destructive">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="mx-auto mb-2"
+      {viewMode === "kanban" ? (
+        <div className="bg-card rounded-lg border shadow-sm">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            modifiers={[restrictToParentElement]}
           >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" x2="12" y1="8" y2="12" />
-            <line x1="12" x2="12.01" y1="16" y2="16" />
-          </svg>
-          <p>{error}</p>
-        </div>
-      ) : filteredLeads.length === 0 ? (
-        // Show empty state
-        <div className="text-center py-12 border rounded-lg">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="40"
-            height="40"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="mx-auto mb-4 text-muted-foreground"
-          >
-            <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-            <path d="M3 9h18" />
-            <path d="M9 21V9" />
-          </svg>
-          <h3 className="text-lg font-medium">No leads found</h3>
-          <p className="text-muted-foreground mt-1">
-            Leads collected from your widgets will appear here
-          </p>
+            <div className="p-4 overflow-x-auto">
+              <div className="flex gap-4 min-w-max pb-2">
+                {statusColumns.map((column) => (
+                  <SortableContext
+                    key={column.id}
+                    items={leadsByStatus[column.id]?.map(lead => lead.id) || []}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <KanbanColumn
+                      status={column}
+                      leads={leadsByStatus[column.id] || []}
+                      onEdit={setEditingLead}
+                    />
+                  </SortableContext>
+                ))}
+              </div>
+            </div>
 
-          <div className="mt-6 max-w-sm mx-auto p-4 border rounded-md bg-muted/40">
-            <h4 className="text-sm font-medium mb-2">
-              Add the lead widget to your website
-            </h4>
-            <pre className="text-xs bg-black/10 dark:bg-white/10 p-2 rounded overflow-x-auto">
-              {`<script src="${
-                window.location.origin || "https://example.com"
-              }/widget.js" data-agent-id="YOUR_AGENT_ID"></script>`}
-            </pre>
-          </div>
+            {/* Drag overlay to show what's being dragged */}
+            <DragOverlay>
+              {activeDragLead && (
+                <div className="w-[250px] opacity-80">
+                  <LeadCard lead={activeDragLead} onEdit={() => {}} />
+                </div>
+              )}
+            </DragOverlay>
+          </DndContext>
         </div>
       ) : (
-        // Show leads table
-        <div className="border rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
+        // Traditional List View (original implementation)
+        <div className="bg-card rounded-lg border shadow-sm">
+          <div className="p-4">
             <table className="w-full">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Contact
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Agent
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Message
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Date
-                  </th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">
-                    Actions
-                  </th>
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left pb-3 font-medium text-sm">Name</th>
+                  <th className="text-left pb-3 font-medium text-sm">Email</th>
+                  <th className="text-left pb-3 font-medium text-sm">Agent</th>
+                  <th className="text-left pb-3 font-medium text-sm">Status</th>
+                  <th className="text-left pb-3 font-medium text-sm">Created</th>
+                  <th className="text-left pb-3 font-medium text-sm">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
-                {filteredLeads.map((lead) => (
-                  <tr key={lead.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{lead.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {lead.email}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      {lead.agents?.name || "Unknown Agent"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm max-w-xs truncate">
-                        {lead.initial_message}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={getStatusBadgeClass(lead.status)}>
-                        {lead.status.charAt(0).toUpperCase() +
-                          lead.status.slice(1)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      {formatDate(lead.created_at)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          className="p-1 hover:bg-muted rounded-sm"
-                          onClick={() => {
-                            setEditingLead(lead);
-                            setNewStatus(lead.status);
-                            setNewNotes(lead.notes || "");
-                          }}
-                          title="Edit lead"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-                          </svg>
-                        </button>
-                        <button
-                          className="p-1 hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600 rounded-sm"
-                          onClick={() => deleteLead(lead.id)}
-                          title="Delete lead"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                          </svg>
-                        </button>
-                      </div>
+              <tbody>
+                {leads.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-4 text-center text-muted-foreground">
+                      {loading ? "Loading leads..." : "No leads found"}
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  leads.map((lead) => (
+                    <tr key={lead.id} className="border-b last:border-0">
+                      <td className="py-3">{lead.name}</td>
+                      <td className="py-3">{lead.email}</td>
+                      <td className="py-3">{lead.agents?.name || "-"}</td>
+                      <td className="py-3">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          lead.status === "new" ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200" :
+                          lead.status === "contacted" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" :
+                          lead.status === "qualified" ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200" :
+                          lead.status === "converted" ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" :
+                          "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300"
+                        }`}>
+                          {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
+                        </span>
+                      </td>
+                      <td className="py-3">{new Date(lead.created_at).toLocaleDateString()}</td>
+                      <td className="py-3">
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setEditingLead(lead)}
+                          >
+                            Edit
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                            onClick={() => deleteLead(lead.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
-
-          {/* Pagination */}
+          
+          {/* Pagination controls */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t">
-              <div className="text-sm text-muted-foreground">
+            <div className="flex justify-between items-center border-t p-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
                 Page {currentPage} of {totalPages}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  className="px-3 py-1 border rounded-md disabled:opacity-50"
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </button>
-                <button
-                  className="px-3 py-1 border rounded-md disabled:opacity-50"
-                  onClick={() =>
-                    setCurrentPage((page) => Math.min(totalPages, page + 1))
-                  }
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                </button>
-              </div>
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Lead Modal */}
+      {editingLead && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-lg">
+            <CardHeader>
+              <CardTitle className="flex justify-between items-center">
+                <span>Edit Lead: {editingLead.name}</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-8 w-8 p-0"
+                  onClick={() => setEditingLead(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="status">Status</Label>
+                  <select
+                    id="status"
+                    className="w-full bg-background border rounded-md px-3 py-2 mt-1"
+                    value={newStatus || editingLead.status}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                  >
+                    {statusColumns.map((col) => (
+                      <option key={col.id} value={col.id}>
+                        {col.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea 
+                    id="notes"
+                    className="w-full mt-1"
+                    placeholder="Add notes about this lead"
+                    value={newNotes || editingLead.notes || ''}
+                    onChange={(e) => setNewNotes(e.target.value)}
+                    rows={5}
+                  />
+                </div>
+                
+                <div className="pt-4 grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Contact</Label>
+                    <div className="text-sm mt-1">{editingLead.email}</div>
+                  </div>
+                  <div>
+                    <Label>Agent</Label>
+                    <div className="text-sm mt-1">{editingLead.agents?.name || "Not assigned"}</div>
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Initial Message</Label>
+                  <div className="text-sm mt-1 p-3 bg-muted rounded-md">
+                    {editingLead.initial_message || "No initial message"}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-between border-t pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setEditingLead(null)}
+              >
+                Cancel
+              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="destructive"
+                  onClick={() => deleteLead(editingLead.id)}
+                >
+                  Delete
+                </Button>
+                <Button onClick={updateLead}>
+                  Save Changes
+                </Button>
+              </div>
+            </CardFooter>
+          </Card>
         </div>
       )}
     </div>

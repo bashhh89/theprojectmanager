@@ -1,16 +1,8 @@
 import "./globals.css"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
-import { Toaster } from "@/components/ui/toaster"
-import dynamic from 'next/dynamic'
 
 const inter = Inter({ subsets: ["latin"] })
-
-// Dynamically import the AppInitializer with no SSR to avoid hydration mismatches
-const AppInitializer = dynamic(
-  () => import('../components/AppInitializer').then(mod => mod.AppInitializer),
-  { ssr: false }
-)
 
 export const metadata: Metadata = {
   title: "AI Assistant | Powered by Pollinations",
@@ -25,9 +17,17 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} antialiased min-h-screen`}>
+        <nav className="border-b border-gray-200 dark:border-gray-800 py-3 px-4 bg-background">
+          <div className="container mx-auto flex justify-between items-center">
+            <a href="/" className="font-semibold text-primary">Agent Builder</a>
+            <div className="flex gap-4">
+              <a href="/agents" className="text-sm hover:text-primary">Agents</a>
+              <a href="/chat" className="text-sm hover:text-primary">Chat</a>
+              <a href="/test-tools" className="text-sm hover:text-primary">Test Tools</a>
+            </div>
+          </div>
+        </nav>
         {children}
-        <Toaster />
-        <AppInitializer />
       </body>
     </html>
   )

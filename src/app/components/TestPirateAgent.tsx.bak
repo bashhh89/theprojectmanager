@@ -1,3 +1,5 @@
+"use client"
+
 import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,7 +46,7 @@ export default function TestPirateAgent() {
       }
     } catch (error) {
       console.error('Error testing pirate agent:', error);
-      setResponse(`Error: ${error.message || 'Unknown error'}`);
+      setResponse(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -86,7 +88,7 @@ export default function TestPirateAgent() {
         <div className="mt-4 text-sm text-muted-foreground">
           <p>This test uses a very simple system prompt:</p>
           <pre className="p-2 bg-muted rounded mt-1 text-xs overflow-auto">
-            {pirateAgent.systemPrompt}
+            {"You are a pirate. Always speak like a pirate. Use pirate slang and expressions. Start every response with 'Arr!' or 'Yarr!' and end with a pirate phrase."}
           </pre>
         </div>
       </CardContent>
