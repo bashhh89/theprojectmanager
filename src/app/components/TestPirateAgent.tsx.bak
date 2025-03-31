@@ -1,0 +1,97 @@
+"use client"
+
+import { useState } from 'react';
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { useMcpRequest } from "@/lib/mcpHelper";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+export default function TestPirateAgent() {
+  const [input, setInput] = useState("");
+  const [response, setResponse] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { sendRequest } = useMcpRequest();
+
+  const handleTestAgent = async () => {
+    try {
+      setLoading(true);
+      setResponse("Testing pirate agent...");
+      
+      // Create a very simple agent with a basic pirate system prompt
+      const pirateAgent = {
+        id: "pirate-test",
+        name: "Simple Pirate",
+        systemPrompt: "You are a pirate. Always speak like a pirate. Use pirate slang and expressions. Start every response with 'Arr!' or 'Yarr!' and end with a pirate phrase.",
+        system_prompt: "You are a pirate. Always speak like a pirate. Use pirate slang and expressions. Start every response with 'Arr!' or 'Yarr!' and end with a pirate phrase."
+      };
+      
+      // We'll capture the response from the API manually
+      const apiResponse = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: input || "Tell me about yourself" }],
+          systemPrompt: pirateAgent.systemPrompt,
+          agent: pirateAgent
+        }),
+      });
+      
+      const data = await apiResponse.json();
+      if (data.success) {
+        setResponse(data.message);
+      } else {
+        setResponse(`Error: ${data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error testing pirate agent:', error);
+      setResponse(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Card className="w-full max-w-3xl mx-auto mt-8">
+      <CardHeader>
+        <CardTitle>Test Agent Persona</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <p className="text-sm mb-2">This simple test will check if the Pollinations API respects system prompts by sending a basic "pirate" persona.</p>
+          <p className="text-sm mb-4">The API should respond with pirate language if system prompts are working correctly.</p>
+        </div>
+        
+        <Textarea 
+          placeholder="Enter a message (or leave empty for default)"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          className="min-h-[100px]"
+        />
+        
+        <Button 
+          onClick={handleTestAgent} 
+          disabled={loading}
+          className="w-full"
+        >
+          {loading ? "Testing..." : "Test Pirate Agent"}
+        </Button>
+        
+        {response && (
+          <div className="mt-4 p-4 border rounded bg-muted">
+            <p className="font-bold mb-2">Response:</p>
+            <p>{response}</p>
+          </div>
+        )}
+        
+        <div className="mt-4 text-sm text-muted-foreground">
+          <p>This test uses a very simple system prompt:</p>
+          <pre className="p-2 bg-muted rounded mt-1 text-xs overflow-auto">
+            {"You are a pirate. Always speak like a pirate. Use pirate slang and expressions. Start every response with 'Arr!' or 'Yarr!' and end with a pirate phrase."}
+          </pre>
+        </div>
+      </CardContent>
+    </Card>
+  );
+} 

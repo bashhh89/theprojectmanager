@@ -1,0 +1,6 @@
+@echo off
+echo Running cleanup script...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0cleanup.ps1"
+echo Starting Next.js development server...
+cd /d %~dp0..
+npx next dev 

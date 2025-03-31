@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Animation utilities */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.delay-1000 {
+  animation-delay: 1s;
+}
+
+.delay-2000 {
+  animation-delay: 2s;
+}
+
+/* QanDu Custom Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: translateY(10px); }
+  10% { opacity: 1; transform: translateY(0); }
+  90% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+
+.qandu-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.qandu-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-fade-in-out {
+  animation: fadeInOut 2s ease-in-out forwards;
+}
+
+/* Transition helper classes */
+.qandu-transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 250ms;
+}
+
+.qandu-transition-transform {
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 250ms;
+}
+
+/* Global styles */
+:root {
+  /* QanDu light theme */
+  --background: 210 20% 98%; /* Light gray background */
+  --foreground: 215 25% 27%; /* Dark text for contrast */
+  --card: 0 0% 100%;
+  --card-foreground: 215 25% 27%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 215 25% 27%;
+  --primary: 202 84% 50%; /* QanDu Blue */
+  --primary-foreground: 210 40% 98%;
+  --secondary: 261 51% 51%; /* QanDu Purple */
+  --secondary-foreground: 210 40% 98%;
+  --muted: 210 20% 96%;
+  --muted-foreground: 215 25% 40%;
+  --accent: 261 51% 51%; /* QanDu Purple as accent */
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 84% 60%; /* Red */
+  --destructive-foreground: 210 40% 98%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 202 84% 50%;
+  --radius: 0.5rem; /* Consistent border radius */
+
+  /* Semantic colors */
+  --success: 142 69% 58%;
+  --warning: 38 92% 50%;
+  --error: 0 84% 60%;
+  --info: 202 84% 50%;
+}
+
+.dark {
+  /* QanDu dark theme */
+  --background: 220 20% 10%; /* Dark background */
+  --foreground: 210 20% 98%; /* Light text */
+  --card: 224 20% 15%;
+  --card-foreground: 210 20% 98%;
+  --popover: 224 20% 15%;
+  --popover-foreground: 210 20% 98%;
+  --primary: 199 85% 55%; /* Slightly brighter QanDu Blue for dark mode */
+  --primary-foreground: 210 40% 98%;
+  --secondary: 261 75% 63%; /* Brighter QanDu Purple for dark mode */
+  --secondary-foreground: 210 40% 98%;
+  --muted: 215 25% 20%;
+  --muted-foreground: 210 20% 80%;
+  --accent: 261 75% 63%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 215 25% 27%;
+  --input: 215 25% 27%;
+  --ring: 199 85% 55%;
+
+  /* Semantic colors */
+  --success: 142 70% 45%;
+  --warning: 38 95% 60%;
+  --error: 0 90% 60%;
+  --info: 199 85% 55%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* QanDu custom focus styles */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+  }
+}
+
+/* QanDu component classes */
+@layer components {
+  .qandu-card {
+    @apply bg-card text-card-foreground rounded-lg border border-border shadow-sm transition-all hover:shadow-md;
+  }
+  
+  .qandu-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  .qandu-heading-1 {
+    @apply text-3xl font-bold tracking-tight sm:text-4xl text-foreground;
+  }
+  
+  .qandu-heading-2 {
+    @apply text-2xl font-semibold tracking-tight sm:text-3xl text-foreground;
+  }
+  
+  .qandu-heading-3 {
+    @apply text-xl font-semibold tracking-tight sm:text-2xl text-foreground;
+  }
+  
+  .qandu-text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary;
+  }
+}
