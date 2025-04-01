@@ -232,6 +232,51 @@ The application implements comprehensive error handling:
 - Zustand
 - Tailwind CSS
 - Pollinations.ai API services
+- Supabase (for Auth, Brand Profiles, Projects)
+- Reveal.js (for presentation display)
+- Marked (for Markdown parsing)
+
+## AI Presentation Generator
+
+### Overview
+This tool allows users to generate presentations automatically based on a topic or a sales proposal structure. It leverages AI for content generation (text and image prompts) and integrates with the user's brand profile for consistent styling.
+
+### Core Features
+- **Presentation Type Selection**: Users can choose between generating a 'General Topic' presentation or a 'Sales Proposal'.
+- **Input Fields**: Dynamic input fields based on the selected type (Topic/Audience for General, Client/Goal for Proposal).
+- **Brand Integration**: Fetches the selected brand profile (via `brandId` query parameter) to apply:
+    - Colors (background, text, accent)
+    - Typography (heading and body fonts)
+- **Brand Styling Toggle**: Allows users to disable brand styling for a neutral look.
+- **AI Content Generation**: Calls the `/api/generate-presentation-slides` endpoint to get:
+    - Slide titles
+    - Slide content (Markdown)
+    - Slide layouts (e.g., `title-slide`, `image-left`, `text-only`)
+    - Image prompts for relevant slides
+- **AI Image Generation**: Calls the `/api/generate-image` endpoint using the prompts to fetch images from Pollinations.
+- **Reveal.js Display**: Renders the generated slides using the `RevealPresentation` component, which wraps Reveal.js.
+- **Consistent Sizing**: Presentation view is constrained to a 16:9 aspect ratio box for consistent display.
+- **Synchronized Loading**: The presentation view now waits until all slide content and images are fetched before displaying, showing a loading indicator in the interim.
+- **PDF Export**: (Placeholder) Button exists but functionality is not yet implemented.
+
+### API Routes Used
+- **`/api/generate-presentation-slides` (POST)**: 
+    - Takes presentation type, topic/proposal details, audience, additional info, and optional brand profile.
+    - Returns an array of slide objects containing title, content (Markdown), layout, and imagePrompt.
+- **`/api/generate-image` (POST)**:
+    - Takes an image prompt.
+    - Constructs and returns a Pollinations image URL.
+
+### Frontend Components
+- **`src/app/tools/presentation-generator/page.tsx`**: The main page component handling user input, state management, API calls, and rendering the presentation view.
+- **`src/components/presentation/RevealPresentation.tsx`**: A wrapper component for Reveal.js that processes slide data (including fetching images via API), initializes Reveal.js, and handles rendering logic based on slide layouts and styles.
+
+### Recent Fixes & Improvements (May/June 2024)
+- Implemented Proposal generation type alongside General Topic.
+- Added Brand styling integration and toggle switch.
+- Fixed inconsistent slide height issues by setting fixed dimensions and aspect ratio.
+- Resolved missing image issue by implementing image fetching based on prompts in `RevealPresentation`.
+- Improved loading experience by ensuring all content (text & images) loads before the presentation is shown.
 
 ## Project Management
 
