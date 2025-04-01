@@ -151,7 +151,7 @@ export default function TestPlaygroundPage() {
 
   // Helper to get model name from ID
   const getModelName = (modelId: string) => {
-    const model = AVAILABLE_MODELS.text.find(m => m.id === modelId);
+    const model = (AVAILABLE_MODELS.TEXT || []).find(m => m.id === modelId);
     return model ? model.name : modelId;
   };
 
@@ -186,7 +186,7 @@ export default function TestPlaygroundPage() {
 
   // Get recommended models (models that typically respect system prompts)
   const getRecommendedModels = () => {
-    return AVAILABLE_MODELS.text.filter(model => 
+    return (AVAILABLE_MODELS.TEXT || []).filter(model => 
       model.id === 'llama' || 
       model.id === 'mistral' || 
       model.id === 'deepseek' || 
@@ -314,7 +314,7 @@ export default function TestPlaygroundPage() {
               <Card className="mt-2 dark:border-gray-700">
                 <CardContent className="p-3">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-80 overflow-y-auto">
-                    {AVAILABLE_MODELS.text.slice(8).map(model => (
+                    {AVAILABLE_MODELS.TEXT.slice(8).map(model => (
                       <div key={model.id} className="flex items-center">
                         <input
                           type="checkbox"

@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+// Constants for Supabase authentication
+const supabaseUrl = 'https://fdbnkgicweyfixbhfcgx.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZkYm5rZ2ljd2V5Zml4YmhmY2d4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDMxMjYyMjQsImV4cCI6MjA1ODcwMjIyNH0.lPLD1le6i0Y64x_uXyMndUqMKQ2XEyIUn0sEvfL5KNk';
+
 // Helper to get authenticated Supabase client
 async function getServerSupabaseClient() {
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         async get(name) {
@@ -243,6 +247,87 @@ export async function DELETE(req: NextRequest) {
     console.error("Error deleting lead:", error);
     return NextResponse.json(
       { error: error.message || "Failed to delete lead" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/leads - Create a new lead
+export async function POST(req: NextRequest) {
+  try {
+    const supabase = await getServerSupabaseClient();
+    
+    // Check if user is authenticated
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    // Get lead data from request body
+    const { name, email, initial_message, agent_id, source = 'manual' } = await req.json();
+    
+    // Validate required fields
+    if (!name || !email || !agent_id) {
+      return NextResponse.json(
+        { error: "Name, email, and agent_id are required" },
+        { status: 400 }
+      );
+    }
+    
+    // Verify the agent belongs to the current user
+    const { data: agentData, error: agentError } = await supabase
+      .from("agents")
+      .select("owner_id")
+      .eq("id", agent_id)
+      .single();
+    
+    if (agentError || !agentData) {
+      return NextResponse.json(
+        { error: "Agent not found" },
+        { status: 404 }
+      );
+    }
+    
+    if (agentData.owner_id !== user.id) {
+      return NextResponse.json(
+        { error: "Unauthorized to create leads for this agent" },
+        { status: 403 }
+      );
+    }
+    
+    // Create the new lead
+    const { data, error } = await supabase
+      .from("leads")
+      .insert({
+        name,
+        email,
+        initial_message,
+        agent_id,
+        source,
+        status: 'new',
+        created_at: new Date().toISOString()
+      })
+      .select(`
+        *,
+        agents (
+          id,
+          name
+        )
+      `)
+      .single();
+    
+    if (error) {
+      throw new Error(error.message);
+    }
+    
+    return NextResponse.json({ lead: data });
+  } catch (error: any) {
+    console.error("Error creating lead:", error);
+    return NextResponse.json(
+      { error: error.message || "Failed to create lead" },
       { status: 500 }
     );
   }

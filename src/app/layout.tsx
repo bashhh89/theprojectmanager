@@ -2,13 +2,13 @@ import "@/app/globals.css"
 import { Inter } from 'next/font/google'
 import { Metadata, Viewport } from "next"
 import ClientLayout from '@/components/ClientLayout'
-import { Toaster } from '@/components/ui/toast-wrapper'
+import { Toaster } from 'sonner'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: "QanDu AI",
-  description: "Next-generation AI chat platform with multimodal capabilities",
+  title: "QanDuAI - Content & Business Platform",
+  description: "AI-Powered Content & Business Platform",
   icons: {
     icon: "/favicon.ico",
   },
@@ -29,8 +29,10 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ClientLayout>{children}</ClientLayout>
-        <Toaster />
+        <ClientLayout>
+          {children}
+          <Toaster richColors position="top-right" />
+        </ClientLayout>
       </body>
     </html>
   )

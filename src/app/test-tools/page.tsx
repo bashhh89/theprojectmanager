@@ -89,8 +89,8 @@ export default function TestToolsDashboard() {
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl bg-background text-foreground dark:bg-gray-900 dark:text-gray-100">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Agent Testing Toolkit</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-3xl font-bold mb-2 text-gray-900 dark:text-white">Agent Testing Toolkit</h1>
+        <p className="text-gray-600 dark:text-gray-300">
           A collection of tools for testing and optimizing your AI agents and models
         </p>
       </div>
@@ -99,12 +99,12 @@ export default function TestToolsDashboard() {
         {tools.map(tool => (
           <Card 
             key={tool.id} 
-            className={`hover:shadow-md transition-shadow ${tool.primary ? 'border-primary/20' : ''} ${tool.disabled ? 'opacity-60' : ''} ${tool.new ? 'border-green-500/50 dark:border-green-500/30' : ''} dark:border-gray-700`}
+            className={`hover:shadow-md transition-shadow ${tool.primary ? 'border-primary/20' : ''} ${tool.disabled ? 'opacity-60' : ''} ${tool.new ? 'border-green-500/50 dark:border-green-500/30' : ''} dark:border-gray-700 dark:bg-gray-800`}
           >
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 {tool.icon}
-                <CardTitle>
+                <CardTitle className="text-gray-900 dark:text-white">
                   {tool.name}
                   {tool.new && (
                     <span className="ml-2 text-xs font-medium bg-green-500/20 text-green-700 dark:text-green-400 rounded-full px-2 py-0.5">
@@ -113,7 +113,7 @@ export default function TestToolsDashboard() {
                   )}
                 </CardTitle>
               </div>
-              <CardDescription>
+              <CardDescription className="text-gray-600 dark:text-gray-300">
                 {tool.description}
               </CardDescription>
             </CardHeader>
@@ -131,12 +131,12 @@ export default function TestToolsDashboard() {
         ))}
       </div>
 
-      <Card className="mt-10 dark:border-gray-700">
+      <Card className="mt-10 dark:border-gray-700 dark:bg-gray-800">
         <CardHeader>
-          <CardTitle>About This Toolkit</CardTitle>
+          <CardTitle className="text-gray-900 dark:text-white">About This Toolkit</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-gray-600 dark:text-gray-300">
             The Agent Testing Toolkit provides a comprehensive suite of tools for testing, debugging, and optimizing your AI assistants.
             Test your system prompts across different models, analyze response patterns, and identify which models best respect agent personas.
             All test results are documented and can be used to improve your agent configurations.
@@ -145,7 +145,7 @@ export default function TestToolsDashboard() {
       </Card>
 
       <div className="mt-8 text-center">
-        <p className="text-sm text-muted-foreground mb-4">
+        <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
           Need to go back to the main application?
         </p>
         <Button variant="secondary" onClick={() => router.push('/')}>

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient'; // Keep for project fetching
+import { useAuth } from '@/context/AuthContext';
 
 interface Project {
   id: string;
@@ -15,20 +16,27 @@ interface Project {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { user, loading: authLoading, session } = useAuth(); // Get user and loading state from context
   const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingProjects, setLoadingProjects] = useState(true); // Separate loading state for projects
   const [error, setError] = useState<string | null>(null);
 
+  // Effect for handling authentication redirect
+  useEffect(() => {
+    if (!authLoading && !user) {
+      console.log("Dashboard: Auth loading complete, no user found. Redirecting to login.");
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  // Effect for loading projects only when authenticated
   useEffect(() => {
     async function loadProjects() {
-      try {
-        setLoading(true);
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-        if (authError || !user) {
-          router.push('/login');
-          return;
-        }
+      // Only load projects if the user is authenticated and auth is not loading
+      if (!authLoading && user) {
+        console.log("Dashboard: User authenticated, loading projects...");
+        try {
+          setLoadingProjects(true);
 
         // Get unique projects
         const { data: projectsData, error: projectsError } = await supabase
@@ -53,15 +61,27 @@ export default function DashboardPage() {
       } catch (err: any) {
         console.error('Error loading projects:', err);
         setError(err.message);
-      } finally {
-        setLoading(false);
+        } finally {
+          setLoadingProjects(false);
+        }
+      } else if (!authLoading && !user) {
+        // If auth check is done and there's no user, ensure projects aren't loaded
+        setLoadingProjects(false);
+        setProjects([]); // Clear projects if user logs out
+        console.log("Dashboard: User not authenticated, skipping project load.");
+      } else {
+         console.log("Dashboard: Waiting for auth state...");
+         // Optionally set loadingProjects true while waiting for auth state
+         // setLoadingProjects(true);
       }
     }
 
     loadProjects();
-  }, [router]);
+    // Depend on user and authLoading to re-run when auth state changes
+  }, [user, authLoading]);
 
-  if (loading) {
+  // Show loading indicator while auth is loading OR projects are loading
+  if (authLoading || loadingProjects) {
     return (
       <div className="flex justify-center items-center h-screen bg-gray-900">
         <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>

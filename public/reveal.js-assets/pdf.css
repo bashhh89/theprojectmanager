@@ -1,0 +1,118 @@
+/**
+ * PDF Export styles for presentations
+ */
+
+.print-pdf .reveal .slides {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.print-pdf .reveal .slides section {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+  margin: 0 !important;
+  page-break-after: always;
+  overflow: hidden !important;
+}
+
+/* Hide elements that shouldn't appear in the PDF */
+.print-pdf .reveal .controls,
+.print-pdf .reveal .progress,
+.print-pdf .reveal .custom-controls,
+.print-pdf .reveal .fallback-navigation,
+.print-pdf .reveal .slide-counter {
+  display: none !important;
+}
+
+/* Keep images visible */
+.print-pdf .reveal .image-container {
+  display: block !important;
+  visibility: visible !important;
+}
+
+.print-pdf .reveal .image-container img {
+  display: block !important;
+  visibility: visible !important;
+  object-fit: cover !important;
+}
+
+/* Ensure content stays visible */
+.print-pdf .reveal .content-container {
+  display: block !important;
+  visibility: visible !important;
+}
+
+/* Background layout in PDF */
+.print-pdf .reveal .layout-background .image-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+
+.print-pdf .reveal .layout-background .image-container img {
+  width: 100%;
+  height: 100%;
+  opacity: 0.2;
+}
+
+.print-pdf .reveal .layout-background .content-container {
+  position: relative;
+  z-index: 1;
+}
+
+/* Split-left layout in PDF */
+.print-pdf .reveal .layout-split-left .image-container {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 45%;
+  height: 100%;
+}
+
+.print-pdf .reveal .layout-split-left .content-container {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 55%;
+  height: 100%;
+}
+
+/* Split-right layout in PDF */
+.print-pdf .reveal .layout-split-right .image-container {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 45%;
+  height: 100%;
+}
+
+.print-pdf .reveal .layout-split-right .content-container {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 55%;
+  height: 100%;
+}
+
+/* Page settings for print */
+@page {
+  size: 1920px 1080px;
+  margin: 0;
+}
+
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+  }
+  
+  .reveal, .reveal * {
+    visibility: visible !important;
+  }
+} 

@@ -363,10 +363,27 @@ export function ProjectCreationWizard({ user, onProjectCreated }: ProjectCreatio
 
       setProcessingStage('Creating your project...');
       setProcessingProgress(50);
-      const { data: projectResult, error: projectError } = await supabase
-        .from('projects')
-        .insert([
-          {
+      
+      // Use our API instead of directly using Supabase
+      console.log('Sending project creation request to API:', {
+        name: analysis.title,
+        title: analysis.title,
+        description: analysis.description,
+        type: analysis.type,
+        status: 'active',
+        objectives: analysis.objectives,
+        timeline: analysis.timeline,
+        branding: analysis.branding
+      });
+
+      let projectResult;
+      try {
+        const response = await fetch('/api/projects', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
             name: analysis.title,
             title: analysis.title,
             description: analysis.description,
@@ -374,17 +391,25 @@ export function ProjectCreationWizard({ user, onProjectCreated }: ProjectCreatio
             status: 'active',
             objectives: analysis.objectives,
             timeline: analysis.timeline,
-            branding: analysis.branding,
-            user_id: user.id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ])
-        .select()
-        .single();
+            branding: analysis.branding
+          }),
+        });
 
-      if (projectError) throw projectError;
-      setProcessingProgress(60);
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('Project creation API error:', errorData);
+          throw new Error(errorData.error || 'Failed to create project');
+        }
+
+        const result = await response.json();
+        projectResult = result.project;
+        console.log('Project created successfully:', projectResult);
+        
+        setProcessingProgress(65);
+      } catch (apiError) {
+        console.error('Error with project creation API:', apiError);
+        throw new Error('Failed to create project via API');
+      }
 
       // Create AnythingLLM workspace for the project
       setProcessingStage('Setting up AI knowledge base...');

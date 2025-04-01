@@ -24,93 +24,107 @@ export type MCPDirective = {
   content: string;
 }
 
-// Available Models for Pollinations API
+// Available models for use with Pollinations API
 export const AVAILABLE_MODELS = {
-  text: [
-    // Google Models - always respect system prompts/agent personas
-    { id: "google-gemini-1.5-flash", name: "Google Gemini 1.5 Flash", description: "Google Gemini 1.5 Flash - Fastest model with full persona support" },
-    { id: "google-gemini-1.5-pro-latest", name: "Google Gemini 1.5 Pro (Latest)", description: "Google Gemini 1.5 Pro - Best quality with full persona support" },
-    { id: "google-gemini-pro", name: "Google Gemini Pro (Direct)", description: "Google Gemini Pro - Direct API access with persona support" },
-    { id: "google-gemini-flash", name: "Google Gemini Flash (Direct)", description: "Google Gemini 1.5 Flash - Direct API access with persona support" },
-
-    // Pollinations models that support system prompts/agent personas
-    { id: "pollinations-llama", name: "Llama 3.3 (Supports Personas)", description: "Latest Llama model - Respects agent personas/system prompts" },
-    { id: "pollinations-mistral", name: "Mistral (Supports Personas)", description: "Mistral Small model - Respects agent personas/system prompts" },
-    { id: "pollinations-deepseek", name: "DeepSeek (Supports Personas)", description: "DeepSeek model - Respects agent personas/system prompts" },
-    
-    // Pollinations models that don't support system prompts/agent personas
-    { id: "openai", name: "OpenAI GPT-4o-mini", description: "OpenAI via Pollinations (NOTE: Does not follow agent personas)" },
-    { id: "gpt4all", name: "GPT4All", description: "Open-source GPT4All (NOTE: May not follow agent personas)" },
-    { id: "gpt4", name: "GPT-4 (Legacy via Pollinations)", description: "GPT-4 via Pollinations (NOTE: Does not follow agent personas)" },
-    { id: "openai-large", name: "OpenAI GPT-4o", description: "OpenAI GPT-4o", baseModel: true, vision: true, censored: true },
-    { id: "openai-reasoning", name: "OpenAI o3-mini", description: "OpenAI o3-mini", baseModel: true, reasoning: true, censored: true },
-    { id: "qwen-coder", name: "Qwen 2.5 Coder", description: "Qwen 2.5 Coder 32B", baseModel: true, censored: true },
-    { id: "gemini-1.5-pro-001", name: "Gemini 1.5 Pro 001", description: "Google Gemini 1.5 Pro 001", baseModel: true, vision: true, censored: false },
-    { id: "gemini-1.5-pro-002", name: "Gemini 1.5 Pro 002", description: "Google Gemini 1.5 Pro 002", baseModel: true, vision: true, censored: false },
-    { id: "gemini-1.5-flash-001", name: "Gemini 1.5 Flash 001", description: "Google Gemini 1.5 Flash 001", baseModel: true, vision: true, censored: false },
-    { id: "gemini-1.5-flash-002", name: "Gemini 1.5 Flash 002", description: "Google Gemini 1.5 Flash 002", baseModel: true, vision: true, censored: false },
-    { id: "gemini-1.5-flash-8b", name: "Gemini 1.5 Flash 8B", description: "Google Gemini 1.5 Flash 8B - smaller model", baseModel: true, vision: true, censored: false },
-    { id: "gemini-1.5-flash-8b-latest", name: "Gemini 1.5 Flash 8B Latest", description: "Google's latest Gemini 1.5 Flash 8B model", baseModel: true, vision: true, censored: false },
-    { id: "gemini-2.0-pro-exp", name: "Gemini 2.0 Pro Experimental", description: "Google Gemini 2.0 Pro Experimental", baseModel: true, vision: true, censored: false },
-    { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", description: "Google Gemini 2.0 Flash", baseModel: true, vision: true, censored: false },
-    { id: "gemini-2.0-flash-001", name: "Gemini 2.0 Flash 001", description: "Google Gemini 2.0 Flash 001", baseModel: true, vision: true, censored: false },
-    { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite", description: "Google Gemini 2.0 Flash Lite - fast and efficient", baseModel: true, vision: true, censored: false },
-    { id: "chat-bison-001", name: "Chat Bison 001", description: "Google Chat Bison 001 model", baseModel: true, censored: true },
-    { id: "text-bison-001", name: "Text Bison 001", description: "Google Text Bison 001 model", baseModel: true, censored: true },
-    { id: "gemma-3-27b-it", name: "Gemma 3 27B IT", description: "Google Gemma 3 27B Instruction Tuned", baseModel: true, censored: false },
-    { id: "mistral-roblox", name: "Mistral Roblox", description: "Mistral Roblox on Scaleway", baseModel: true, censored: false },
-    { id: "roblox-rp", name: "Roblox Roleplay", description: "Roblox Roleplay Assistant", baseModel: true, censored: true },
-    { id: "unity", name: "Unity", description: "Unity with Mistral Large by Unity AI Lab", baseModel: false, censored: false },
-    { id: "midijourney", name: "Midijourney", description: "Midijourney musical transformer", baseModel: false, censored: true },
-    { id: "rtist", name: "Rtist", description: "Rtist image generator by @bqrio", baseModel: false, censored: true },
-    { id: "searchgpt", name: "SearchGPT", description: "SearchGPT with realtime news and web search", baseModel: false, censored: true },
-    { id: "evil", name: "Evil Mode", description: "Evil Mode - Experimental", baseModel: false, censored: false },
-    { id: "deepseek-r1", name: "DeepSeek-R1 Distill", description: "DeepSeek-R1 Distill Qwen 32B", baseModel: true, reasoning: true, censored: true },
-    { id: "deepseek-reasoner", name: "DeepSeek R1 Full", description: "DeepSeek R1 - Full", baseModel: true, reasoning: true, censored: true },
-    { id: "deepseek-r1-llama", name: "DeepSeek R1 Llama", description: "DeepSeek R1 - Llama 70B", baseModel: true, reasoning: true, censored: true },
-    { id: "qwen-reasoning", name: "Qwen QWQ", description: "Qwen QWQ 32B - Advanced Reasoning", baseModel: true, reasoning: true, censored: true },
-    { id: "llamalight", name: "Llama 3.1 Light", description: "Llama 3.1 8B Instruct", baseModel: true, maxTokens: 7168, censored: false },
-    { id: "llamaguard", name: "Llamaguard", description: "Llamaguard 7B AWQ", baseModel: false, maxTokens: 4000, censored: false },
-    { id: "phi", name: "Phi-4", description: "Phi-4 Instruct", baseModel: true, censored: true },
-    { id: "phi-mini", name: "Phi-4 Mini", description: "Phi-4 Mini Instruct", baseModel: true, censored: true },
-    { id: "llama-vision", name: "Llama 3.2 Vision", description: "Llama 3.2 11B Vision", baseModel: true, vision: true, censored: false },
-    { id: "pixtral", name: "Pixtral", description: "Pixtral 12B", baseModel: true, vision: true, censored: false },
-    { id: "gemini", name: "Gemini 2.0", description: "Gemini 2.0 Flash", baseModel: true, censored: true },
-    { id: "gemini-thinking", name: "Gemini Thinking", description: "Gemini 2.0 Flash Thinking", baseModel: true, censored: true },
-    { id: "hormoz", name: "Hormoz", description: "Hormoz 8b by Muhammadreza Haghiri", baseModel: true, censored: false },
-    { id: "hypnosis-tracy", name: "Hypnosis Tracy", description: "Hypnosis Tracy 7B - Self-help AI assistant", baseModel: false, censored: false },
-    { id: "sur", name: "Sur AI", description: "Sur AI Assistant", baseModel: false, censored: true },
-    { id: "sur-mistral", name: "Sur AI (Mistral)", description: "Sur AI Assistant (Mistral)", baseModel: false, censored: true },
-    { id: "llama-scaleway", name: "Llama (Scaleway)", description: "Llama (Scaleway)", baseModel: true, censored: false },
-    { id: "openai-audio", name: "OpenAI Audio", description: "OpenAI GPT-4o-audio-preview", baseModel: true, audio: true, censored: true }
+  TEXT: [
+    { id: 'openai', name: 'OpenAI GPT-4', type: 'chat', censored: true, description: 'OpenAI GPT-4o-mini', vision: true },
+    { id: 'openai-large', name: 'OpenAI GPT-4 Large', type: 'chat', censored: true, description: 'OpenAI GPT-4o', vision: true },
+    { id: 'openai-reasoning', name: 'OpenAI Reasoning', type: 'chat', censored: true, description: 'OpenAI o3-mini', reasoning: true },
+    { id: 'qwen-coder', name: 'Qwen 2.5 Coder', type: 'chat', censored: true, description: 'Qwen 2.5 Coder 32B' },
+    { id: 'llama', name: 'Llama 3.3 70B', type: 'chat', censored: false },
+    { id: 'mistral', name: 'Mistral Small 3.1', type: 'chat', censored: false, vision: true },
+    { id: 'deepseek', name: 'DeepSeek-V3', type: 'chat', censored: true },
+    { id: 'gemini', name: 'Gemini 2.0 Flash', type: 'chat', censored: true, provider: 'google' },
+    { id: 'gemini-thinking', name: 'Gemini 2.0 Flash Thinking', type: 'chat', censored: true, provider: 'google' }
   ],
-  image: [
-    { id: "turbo", name: "Turbo - Fast Generation", description: "Fast image generation with good quality" },
-    { id: "flux", name: "Flux - High Quality", description: "High quality image generation (slower but better results)" }
-  ],
-  voices: [
-    { id: "alloy", name: "Alloy", description: "Neutral voice" },
-    { id: "echo", name: "Echo", description: "Echo voice" },
-    { id: "fable", name: "Fable", description: "Fable voice" },
-    { id: "onyx", name: "Onyx", description: "Deep, serious voice" },
-    { id: "nova", name: "Nova", description: "Female voice" },
-    { id: "shimmer", name: "Shimmer", description: "Soft, calming voice" },
-    { id: "coral", name: "Coral", description: "Coral voice" },
-    { id: "verse", name: "Verse", description: "Verse voice" },
-    { id: "ballad", name: "Ballad", description: "Ballad voice" },
-    { id: "ash", name: "Ash", description: "Ash voice" },
-    { id: "sage", name: "Sage", description: "Sage voice" },
-    { id: "amuch", name: "Amuch", description: "Amuch voice" },
-    { id: "dan", name: "Dan", description: "Dan voice" }
-  ],
-  audio: [
-    { id: "openai-audio", name: "OpenAI TTS", description: "Text-to-speech by OpenAI" }
-  ],
-  voice: [
-    { id: "elevenlabs", name: "ElevenLabs", description: "ElevenLabs TTS" },
-    { id: "openai", name: "OpenAI TTS", description: "OpenAI Text-to-Speech" }
+  IMAGE: [
+    { id: 'flux', name: 'Flux' },
+    { id: 'turbo', name: 'Turbo' }
   ]
 };
+
+// Base URL for Pollinations API
+const POLLINATIONS_API_BASE_URL = 'https://text.pollinations.ai';
+
+/**
+ * Call the Pollinations API for chat completion
+ * @param messages - Array of message objects with role and content
+ * @param model - Model ID to use for completion
+ * @param systemPrompt - Optional system prompt
+ * @param stream - Whether to stream the response
+ * @returns Response from the API
+ */
+export async function callPollinationsChat(
+  messages: Array<{ role: string; content: string }>,
+  model = 'openai',
+  systemPrompt?: string,
+  stream = false
+) {
+  try {
+    // For single message simple requests
+    if (messages.length === 1 && messages[0].role === 'user') {
+      const prompt = encodeURIComponent(messages[0].content);
+      const systemParam = systemPrompt ? `&system=${encodeURIComponent(systemPrompt)}` : '';
+      const url = `${POLLINATIONS_API_BASE_URL}/${prompt}?model=${model}${systemParam}`;
+      
+      const response = await fetch(url);
+      return response.text();
+    }
+    
+    // For conversation with multiple messages
+    const response = await fetch(`${POLLINATIONS_API_BASE_URL}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: systemPrompt 
+          ? [{ role: 'system', content: systemPrompt }, ...messages]
+          : messages,
+        model,
+        stream
+      })
+    });
+    
+    if (stream) {
+      return response.body;
+    }
+    
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      // If not valid JSON, return the text directly
+      return { message: { content: text } };
+    }
+  } catch (error) {
+    console.error('Error calling Pollinations API:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate audio from text using Pollinations API
+ * @param text - Text to convert to speech
+ * @param voice - Voice ID to use
+ * @returns URL to the generated audio
+ */
+export function generateAudioUrl(text: string, voice = 'alloy') {
+  const encodedText = encodeURIComponent(text);
+  return `${POLLINATIONS_API_BASE_URL}/audio?text=${encodedText}&model=openai-audio&voice=${voice}&t=${Date.now()}`;
+}
+
+/**
+ * Generate an image URL from a prompt using the correct Pollinations image endpoint.
+ * @param prompt - Text prompt for image generation
+ * @param width - Desired image width (default: 256)
+ * @param height - Desired image height (default: 256)
+ * @returns URL to the generated image conforming to Pollinations requirements.
+ */
+export function generateImageUrl(prompt: string, width = 256, height = 256) {
+  // Encode the prompt for URL usage (replaces spaces with %20, etc.)
+  const encodedPrompt = encodeURIComponent(prompt);
+  // Construct the URL using the image.pollinations.ai endpoint and required parameters
+  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&nologo=true`;
+}
 
 /**
  * Generate text using the Pollinations API with retry logic
@@ -419,91 +433,6 @@ export function processConversationHistory(messages: any[]): {
 }
 
 /**
- * Generate an image URL based on a prompt
- */
-export function generateImageUrl(
-  prompt: string, 
-  options: { 
-    width?: number; 
-    height?: number; 
-    seed?: number; 
-    model?: string;
-    nologo?: boolean;
-  } = {}
-): string {
-  const { width = 512, height = 512, seed, model = 'flux', nologo } = options;
-  
-  let url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}`;
-  
-  if (seed !== undefined) {
-    url += `&seed=${seed}`;
-  }
-  
-  if (model) {
-    url += `&model=${model}`;
-  }
-  
-  if (nologo) {
-    url += `&nologo=true`;
-  }
-  
-  // Always add safety=off parameter
-  url += `&safety=off`;
-  
-  return url;
-}
-
-/**
- * Generate an audio URL based on text
- * Ensures proper encoding and URL validity
- */
-export function generateAudioUrl(text: string, voice?: string): string {
-  // Ensure text is not empty
-  if (!text || text.trim() === '') {
-    console.error("Empty text passed to generateAudioUrl");
-    text = "Audio generation requires text input";
-  }
-  
-  // Truncate extremely long texts to avoid URL length issues
-  // 2000 chars is a safe limit for most modern browsers and servers
-  if (text.length > 2000) {
-    console.warn("Text too long for audio URL, truncating to 2000 chars");
-    text = text.substring(0, 1997) + "...";
-  }
-  
-  try {
-    // Build the URL with proper query parameters using URLSearchParams
-    const params = new URLSearchParams();
-    params.append('text', text); 
-    params.append('model', 'openai-audio');
-    
-    // Add voice parameter if provided
-    if (voice && voice.trim()) {
-      params.append('voice', voice.trim());
-    } else {
-      // Default voice if none is provided
-      params.append('voice', 'alloy');
-    }
-    
-    // Add cache-busting parameter to prevent browser caching issues
-    params.append('t', Date.now().toString());
-    
-    // Construct the final URL - use POST endpoint for more reliable handling
-    const url = `https://text.pollinations.ai/audio?${params.toString()}`;
-    
-    console.log("Generated audio URL:", url);
-    return url;
-  } catch (error) {
-    console.error("Error generating audio URL:", error);
-    
-    // Fallback to a simple encoding method if the above fails
-    const fallbackUrl = `https://text.pollinations.ai/audio?text=${encodeURIComponent(text.substring(0, 1000))}&voice=${voice || 'alloy'}&t=${Date.now()}`;
-    console.log("Using fallback audio URL:", fallbackUrl);
-    return fallbackUrl;
-  }
-}
-
-/**
  * Subscribe to the image feed
  * Returns an EventSource that can be used to listen for new images
  */
@@ -561,4 +490,74 @@ export function subscribeToTextFeed(
   }
   
   return eventSource;
+}
+
+export async function generateGeminiResponse(prompt: string, model: string): Promise<string> {
+  try {
+    const response = await fetch('https://text.pollinations.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error('Failed to generate response')
+    }
+
+    const data = await response.json()
+    return data.choices[0].message.content
+  } catch (error) {
+    console.error('Error generating response:', error)
+    throw error
+  }
+}
+
+// Define available models for Pollinations
+export const POLLINATIONS_MODELS = {
+  flux: 'Flux',
+  turbo: 'Turbo'
+};
+
+export async function generatePollinationsResponse(prompt: string, model: string = 'flux'): Promise<string> {
+  try {
+    const response = await fetch('https://text.pollinations.ai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to generate response');
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error('Pollinations API error:', error);
+    throw error;
+  }
 }

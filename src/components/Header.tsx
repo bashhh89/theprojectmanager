@@ -45,7 +45,7 @@ const Header = () => {
   
   const handleAccountClick = () => {
     if (isAuthenticated) {
-      router.push('/profile');
+      router.push('/account');
     } else {
       router.push('/login');
     }

@@ -1,21 +1,32 @@
 import React from 'react';
-import { AVAILABLE_MODELS } from '@/lib/pollinationsApi';
 
 interface ModelSelectorProps {
   selectedModel: string;
   onModelSelect: (modelId: string) => void;
 }
 
+interface Model {
+  id: string;
+  name: string;
+}
+
+// Define static model options instead of importing AVAILABLE_MODELS
+const TEXT_MODELS = [
+  { id: 'openai', name: 'OpenAI GPT-4' },
+  { id: 'google-gemini-pro', name: 'Google Gemini Pro' },
+  { id: 'gemini-1.5-flash-001', name: 'Gemini 1.5 Flash' },
+  { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro' }
+];
+
 // Group models by type
 const modelGroups = {
-  google: AVAILABLE_MODELS.text.filter(model => 
-    model.id.startsWith('google-') || 
-    model.id.startsWith('gemini-')
+  google: TEXT_MODELS.filter((model: Model) => 
+    model.id.includes('google') || 
+    model.id.includes('gemini')
   ),
-  pollinations: AVAILABLE_MODELS.text.filter(model => 
-    !model.id.startsWith('google-') && 
-    !model.id.startsWith('gemini-') &&
-    !model.baseModel
+  pollinations: TEXT_MODELS.filter((model: Model) => 
+    !model.id.includes('google') && 
+    !model.id.includes('gemini')
   )
 };
 
@@ -47,18 +58,7 @@ export function ModelSelector({ selectedModel, onModelSelect }: ModelSelectorPro
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-medium">{model.name}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{model.description}</div>
                   </div>
-                  {model.vision && (
-                    <span className="text-xs px-2 py-1 rounded-full bg-blue-900/50 text-blue-200 ml-2">
-                      Vision
-                    </span>
-                  )}
-                  {model.reasoning && (
-                    <span className="text-xs px-2 py-1 rounded-full bg-purple-900/50 text-purple-200 ml-2">
-                      Reasoning
-                    </span>
-                  )}
                 </div>
               </button>
             ))}
@@ -84,18 +84,7 @@ export function ModelSelector({ selectedModel, onModelSelect }: ModelSelectorPro
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-medium">{model.name}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{model.description}</div>
                   </div>
-                  {model.vision && (
-                    <span className="text-xs px-2 py-1 rounded-full bg-blue-900/50 text-blue-200 ml-2">
-                      Vision
-                    </span>
-                  )}
-                  {model.reasoning && (
-                    <span className="text-xs px-2 py-1 rounded-full bg-purple-900/50 text-purple-200 ml-2">
-                      Reasoning
-                    </span>
-                  )}
                 </div>
               </button>
             ))}

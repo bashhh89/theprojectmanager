@@ -11,7 +11,19 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
-    domains: ['placehold.co'], // Allow images from our placeholder service
+    domains: [
+      'placehold.co',
+      'th.bing.com',
+      'i.imgur.com',
+      'images.unsplash.com',
+      'via.placeholder.com',
+      'picsum.photos',
+      'cloudflare-ipfs.com',
+      'loremflickr.com',
+      'res.cloudinary.com',
+      'text.pollinations.ai',
+      'image.pollinations.ai'
+    ],
   },
   env: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',

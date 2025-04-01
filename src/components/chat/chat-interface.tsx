@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, Book, Server, Save, Star, Settings, Plus, ArrowRight, ChevronDown } from 'lucide-react';
 import { ChatInput } from './chat-input';
 import { ChatMessages } from './chat-messages';
-import { useSettingsStore } from '@/store/settingsStore';
+import { useSettingsStore, Agent } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useTheme } from 'next-themes';
 import Link from 'next/link'
@@ -12,6 +12,7 @@ import { Button } from '../ui/button-unified';
 import { cn } from '@/lib/utils';
 import { toasts } from '@/components/ui/toast-wrapper';
 import { useRouter } from 'next/navigation';
+import { AgentSwitcher } from './agent-switcher';
 
 // Saved prompt interface
 interface SavedPrompt {
@@ -119,7 +120,7 @@ export function ChatInterface() {
   const [isMobile, setIsMobile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   
-  const { activeTextModel, setActiveTextModel, darkMode, setDarkMode, activeAgent } = useSettingsStore();
+  const { activeTextModel, setActiveTextModel, darkMode, setDarkMode, activeAgent, setActiveAgent, agents } = useSettingsStore();
   const { createChat } = useChatStore();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
@@ -242,10 +243,20 @@ export function ChatInterface() {
   const getModelDisplayName = () => {
     if (!activeTextModel) return 'Select a model';
     
-    const [endpointId, modelName] = activeTextModel.split('-');
+    const parts = activeTextModel.split('-');
+    if (parts.length < 2) return activeTextModel; // Return as is if no dash present
+    
+    const [endpointId, ...modelNameParts] = parts;
+    const modelName = modelNameParts.join('-');
     const endpoint = endpoints.find(e => e.id === endpointId);
     
-    return endpoint ? `${endpoint.name} ${modelName.charAt(0).toUpperCase() + modelName.slice(1)}` : activeTextModel;
+    // Remove provider name from model if it starts with the same string
+    let displayModelName = modelName;
+    if (endpoint && modelName.toLowerCase().startsWith(endpointId.toLowerCase())) {
+      displayModelName = modelName.substring(endpointId.length).replace(/^[-\s]+/, '');
+    }
+    
+    return endpoint ? `${endpoint.name} ${displayModelName.charAt(0).toUpperCase() + displayModelName.slice(1)}` : activeTextModel;
   };
 
   // Handle responsive sidebar
@@ -305,7 +316,42 @@ export function ChatInterface() {
           </div>
           
           <div className="p-4">
-            <div className="space-y-4">
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-3">Agent Selection</label>
+                <div className="space-y-2">
+                  {agents.map((agent: Agent) => (
+                    <div 
+                      key={agent.id}
+                      className={cn(
+                        "p-3 rounded-md border cursor-pointer transition-all",
+                        activeAgent.id === agent.id 
+                          ? "border-primary bg-primary/5" 
+                          : "border-border hover:border-primary/50"
+                      )}
+                      onClick={() => {
+                        setActiveAgent(agent);
+                        // Don't close the settings yet
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium">{agent.name}</div>
+                        {activeAgent.id === agent.id && (
+                          <div className="bg-primary text-primary-foreground rounded-full text-xs px-2 py-0.5">
+                            Active
+                          </div>
+                        )}
+                      </div>
+                      {agent.description && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          {agent.description}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+          
               <div>
                 <label className="block text-sm font-medium mb-1">Preferred Model</label>
                 <select 
@@ -380,91 +426,92 @@ export function ChatInterface() {
       {/* Left sidebar - can be toggled on mobile */}
       <aside 
         className={cn(
-          "h-full border-r border-border bg-card/50 w-80 flex-shrink-0 transition-all duration-300 ease-in-out overflow-auto",
-          showSidebar ? "translate-x-0" : "-translate-x-full",
+          "h-full border-r border-border bg-card/50 flex-shrink-0 transition-all duration-300 ease-in-out",
+          showSidebar ? "w-80" : "w-0",
           isMobile ? "absolute left-0 top-0 z-20 shadow-lg" : "relative"
         )}
       >
-        <div className="p-4 border-b border-border">
-          <h2 className="font-semibold text-lg">Chat History</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Your recent conversations
-          </p>
-        </div>
-        
-        <div className="p-3">
-          <Button 
-            variant="primary-gradient"
-            size="sm"
-            fullWidth={true}
-            leftIcon={
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14"></path>
-                <path d="M5 12h14"></path>
-              </svg>
-            }
-          >
-            New Chat
-          </Button>
-        </div>
-        
-        <nav className="px-3 py-2">
-          <div className="space-y-1">
-            {/* Example chat history items */}
-            {Array.from({ length: 5 }).map((_, i) => (
-              <button 
-                key={i}
-                className="w-full flex items-center gap-3 rounded-md p-3 text-sm hover:bg-muted/50 qandu-transition-all"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 6.1H3"></path>
-                  <path d="M21 12.1H3"></path>
-                  <path d="M15.1 18H3"></path>
-                </svg>
-                <div className="flex-1 text-left truncate">
-                  Chat Session {i + 1}
-            </div>
-                <div className="text-xs text-muted-foreground whitespace-nowrap">
-                  {i === 0 ? 'Just now' : `${i}d ago`}
-            </div>
-              </button>
-            ))}
+        <div className={cn("h-full overflow-auto", showSidebar ? "opacity-100" : "opacity-0", "transition-opacity duration-300")}>
+          <div className="p-4 border-b border-border">
+            <h2 className="font-semibold text-lg">Chat History</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Your recent conversations
+            </p>
           </div>
-        </nav>
+          
+          <div className="p-3">
+            <Button 
+              variant="primary-gradient"
+              size="sm"
+              fullWidth={true}
+              leftIcon={
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14"></path>
+                  <path d="M5 12h14"></path>
+                </svg>
+              }
+              onClick={handleNewChat}
+            >
+              New Chat
+            </Button>
+          </div>
+          
+          <nav className="px-3 py-2">
+            <div className="space-y-1">
+              {/* Example chat history items */}
+              {Array.from({ length: 5 }).map((_, i) => (
+                <button 
+                  key={i}
+                  className="w-full flex items-center gap-3 rounded-md p-3 text-sm hover:bg-muted/50 qandu-transition-all"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 6.1H3"></path>
+                    <path d="M21 12.1H3"></path>
+                    <path d="M15.1 18H3"></path>
+                  </svg>
+                  <div className="flex-1 text-left truncate">
+                    Chat Session {i + 1}
+                  </div>
+                  <div className="text-xs text-muted-foreground whitespace-nowrap">
+                    {i === 0 ? 'Just now' : `${i}d ago`}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </nav>
+        </div>
       </aside>
 
       {/* Main chat area */}
       <div 
-        className="flex-1 flex flex-col h-full overflow-hidden relative"
+        className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300 w-full"
         ref={chatContainerRef}
       >
         {/* Chat header */}
         <header className="p-4 border-b border-border flex items-center justify-between bg-card/30 backdrop-blur-sm">
           <div className="flex items-center">
             {/* Mobile sidebar toggle */}
-            {isMobile && (
-              <button 
-                onClick={() => setShowSidebar(!showSidebar)}
-                className="mr-3 p-2 rounded-md hover:bg-muted/50 qandu-transition-all"
-                aria-label={showSidebar ? "Close sidebar" : "Open sidebar"}
+            <button 
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="mr-3 p-2 rounded-md hover:bg-muted/50 qandu-transition-all"
+              aria-label={showSidebar ? "Close sidebar" : "Open sidebar"}
+            >
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="20" 
+                height="20" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
               >
-                <svg 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  width="20" 
-                  height="20" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                >
-                  <path d="M3 7h18"></path>
-                  <path d="M3 12h18"></path>
-                  <path d="M3 17h18"></path>
-                </svg>
-              </button>
-            )}
+                <path d="M3 7h18"></path>
+                <path d="M3 12h18"></path>
+                <path d="M3 17h18"></path>
+              </svg>
+            </button>
             
             {/* Chat title */}
             <div>
@@ -473,8 +520,9 @@ export function ChatInterface() {
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
-            <div className="relative">
+          <div className="flex items-center gap-3">
+            {/* Model selection - moved before agent switcher */}
+            <div className="relative model-selector">
               <button 
                 onClick={toggleModelSelector}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-border hover:bg-muted/50 qandu-transition-all"
@@ -484,7 +532,7 @@ export function ChatInterface() {
               </button>
               
               {showModelSelector && (
-                <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-md shadow-lg z-10 w-56 overflow-hidden">
+                <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-md shadow-lg z-[100] w-56 overflow-hidden">
                   <div className="max-h-64 overflow-y-auto">
                     {endpoints.map((endpoint) => (
                       <div key={endpoint.id} className="p-2 border-b border-border last:border-0">
@@ -509,6 +557,9 @@ export function ChatInterface() {
                 </div>
               )}
             </div>
+            
+            {/* Agent selection dropdown */}
+            <AgentSwitcher />
             
             <button 
               className="p-2 rounded-md hover:bg-muted/50 qandu-transition-all"
