@@ -1,603 +1,837 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Book, Server, Save, Star, Settings, Plus, ArrowRight, ChevronDown } from 'lucide-react';
-import { ChatInput } from './chat-input';
-import { ChatMessages } from './chat-messages';
+import { Message } from '@/store/chatStore';
 import { useSettingsStore, Agent } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useTheme } from 'next-themes';
 import Link from 'next/link'
-import { Button } from '../ui/button-unified';
+import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
 import { toasts } from '@/components/ui/toast-wrapper';
 import { useRouter } from 'next/navigation';
-import { AgentSwitcher } from './agent-switcher';
+import { AgentSwitcher } from './agent-switcher'; // Keep for settings modal maybe?
+import { ChatInput } from './chat-input-new';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useUser } from '@/hooks/useUser'; // Now importing from our new hook
+import { AVAILABLE_MODELS } from '@/lib/pollinationsApi'; // Import all available models
+import { generateImageUrl, generateAudioUrl, generatePollinationsAudio } from '@/lib/pollinationsApi'; // Import all needed audio and image functions
+import { marked } from 'marked'; // Import marked for markdown rendering
+import { showError, showSuccess, showInfo } from '@/components/ui/toast';
+import { logError } from '@/utils/errorLogging';
+import { Sparkle, Pencil, Plus, Menu, CircleUser, MessageSquare, Book, Settings as SettingsIcon, LogOut, Keyboard } from 'lucide-react';
+import { useHotkeys } from 'react-hotkeys-hook';
 
-// Saved prompt interface
-interface SavedPrompt {
-  id: string;
-  title: string;
-  content: string;
-  tags?: string[];
-}
+// Configure marked options for security and features
+marked.setOptions({
+  breaks: true, // Add line breaks on single line breaks
+  gfm: true     // Enable GitHub Flavored Markdown
+});
 
-// Model selection dropdown with QanDu styled UI
-const ModelSelector = ({ 
-  selectedModel, 
-  onModelChange, 
-  availableModels 
-}: { 
-  selectedModel: string; 
-  onModelChange: (model: string) => void;
-  availableModels: string[];
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  
-  return (
-    <div className="relative">
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 rounded-md border border-border bg-card p-2 text-sm hover:bg-muted/50 qandu-transition-all"
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-      >
-        <svg 
-          xmlns="http://www.w3.org/2000/svg" 
-          width="16" 
-          height="16" 
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="currentColor" 
-          strokeWidth="2" 
-          strokeLinecap="round" 
-          strokeLinejoin="round" 
-          className="text-primary"
-        >
-          <rect width="18" height="18" x="3" y="3" rx="2"></rect>
-          <path d="M12 7v10"></path>
-          <path d="M15.5 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"></path>
-          <path d="M8.5 19a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"></path>
-        </svg>
-        <span className="flex-1 text-left truncate max-w-[120px]">{selectedModel}</span>
-        <svg 
-          xmlns="http://www.w3.org/2000/svg" 
-          width="14" 
-          height="14" 
-          viewBox="0 0 24 24" 
-          fill="none" 
-          stroke="currentColor" 
-          strokeWidth="2" 
-          strokeLinecap="round" 
-          strokeLinejoin="round" 
-          className={cn("transition-transform", isOpen ? "rotate-180" : "")}
-        >
-          <path d="m6 9 6 6 6-6"></path>
-        </svg>
-      </button>
-      
-      {isOpen && (
-        <div className="absolute z-10 mt-1 w-full max-h-56 overflow-auto rounded-md border border-border bg-card shadow-md qandu-fade-in">
-          <ul className="py-1" role="listbox">
-            {availableModels.map((model) => (
-              <li 
-                key={model}
-                onClick={() => {
-                  onModelChange(model);
-                  setIsOpen(false);
-                }}
-                className={cn(
-                  "px-3 py-2 cursor-pointer text-sm qandu-transition-all",
-                  model === selectedModel 
-                    ? "bg-primary/10 text-primary" 
-                    : "hover:bg-muted/50"
-                )}
-                role="option"
-                aria-selected={model === selectedModel}
-              >
-                {model}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
+// Safely render markdown with image support
+const renderMarkdown = (content: string) => {
+  try {
+    // Check if there's markdown image syntax that needs to be converted to real images
+    // This regex finds markdown image syntax: ![text](url)
+    const imageRegex = /!\[(.*?)\]\((https:\/\/image\.pollinations\.ai\/prompt\/.*?)\)/g;
+    
+    // Replace all image markdown with actual HTML image tags
+    let processedContent = content.replace(
+      imageRegex,
+      (match, altText, imageUrl) => {
+        // Create an actual img tag with the URL
+        return `<div class="image-preview my-4">
+          <img src="${imageUrl}" alt="${altText}" class="rounded-md max-w-full h-auto" />
+          <p class="text-xs text-zinc-400 mt-1">${altText}</p>
+        </div>`;
+      }
+    );
+    
+    // Also specifically target the Pollinations image format with width and height params
+    processedContent = processedContent.replace(
+      /!\[Generated Image\]\(https:\/\/image\.pollinations\.ai\/prompt\/(.*?)(\?width=(\d+)&height=(\d+)&nologo=true)\)/g,
+      (match, encodedPrompt, params, width, height) => {
+        const decodedPrompt = decodeURIComponent(encodedPrompt);
+        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}${params}`;
+        return `<div class="image-preview my-4">
+          <img src="${imageUrl}" alt="${decodedPrompt}" class="rounded-md my-2 max-w-full" />
+          <p class="text-xs text-zinc-400 mt-1">${decodedPrompt}</p>
+        </div>`;
+      }
+    );
+    
+    // Render the markdown to HTML
+    const html = marked.parse(processedContent);
+    
+    // Return the HTML to be rendered
+    return { __html: html };
+  } catch (error) {
+    console.error("Error rendering markdown:", error);
+    return { __html: `<p>${content}</p>` };
+  }
+};
+
+// Add keyboard shortcuts map
+const KEYBOARD_SHORTCUTS = {
+  newChat: 'ctrl+n',
+  clearChat: 'ctrl+l',
+  focusInput: '/',
+  toggleModel: 'ctrl+m',
+  toggleAgent: 'ctrl+a',
+  toggleTheme: 'ctrl+shift+t',
 };
 
 export function ChatInterface() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showPrompts, setShowPrompts] = useState(false);
-  const [savedPrompts, setSavedPrompts] = useState<SavedPrompt[]>([]);
-  const [newPromptTitle, setNewPromptTitle] = useState('');
-  const [activeEndpoint, setActiveEndpoint] = useState('google');
-  const [showModelSelector, setShowModelSelector] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Keep state if sidebar might be added later
   const [mounted, setMounted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const [selectedModel, setSelectedModel] = useState('openai-gpt-4o');
-  const [showSidebar, setShowSidebar] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [isNewChat, setIsNewChat] = useState(true);
+  const [showAllModels, setShowAllModels] = useState(false);
+  const { user, userDetails } = useUser(); // Get user data
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Use the proper model list from AVAILABLE_MODELS
+  const availableModels = AVAILABLE_MODELS.TEXT.map(model => model.id);
   
-  const { activeTextModel, setActiveTextModel, darkMode, setDarkMode, activeAgent, setActiveAgent, agents } = useSettingsStore();
-  const { createChat } = useChatStore();
-  const { theme, setTheme } = useTheme();
+  const { 
+    activeTextModel, 
+    setActiveTextModel, 
+    activeAgent, 
+    setActiveAgent,
+    activeVoice,
+    setActiveVoice,
+    agents 
+  } = useSettingsStore();
+  
+  const { 
+    getActiveChatMessages, 
+    addMessage, 
+    isGenerating, 
+    createChat,
+    resetAll,
+    setIsGenerating
+  } = useChatStore();
+  
+  const messages = getActiveChatMessages();
+  const { theme, setTheme } = useTheme(); // Still useful for dark/light base
   const router = useRouter();
 
-  // Handle mounted state to prevent hydration issues
+  // Set theme to dark by default to match Gemini style
+  useEffect(() => {
+    setTheme('dark');
+  }, [setTheme]);
+
   useEffect(() => {
     setMounted(true);
-  }, []);
+    // Initialize active model only if it's not set or invalid
+    if (!activeTextModel || !availableModels.includes(activeTextModel)) {
+      setActiveTextModel('openai');
+    }
+  }, [availableModels, setActiveTextModel]);
 
-  // Sync settings store with theme
   useEffect(() => {
-    if (mounted) {
-      // When theme changes, update the settings store
-      setDarkMode(theme === 'dark');
-    }
-  }, [theme, setDarkMode, mounted]);
+    setIsNewChat(messages.length === 0);
+  }, [messages]);
 
-  // Close model selector when clicking outside
+  // Handle responsive sidebar (if keeping sidebar)
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (showModelSelector && !(event.target as Element).closest('.model-selector')) {
-        setShowModelSelector(false);
-      }
-    }
-    
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showModelSelector]);
-
-  // Available endpoints
-  const endpoints = [
-    { id: 'google', name: 'Google', icon: 'G', models: ['gemini-pro', 'gemini-flash'] },
-    { id: 'openai', name: 'OpenAI', icon: 'O', models: ['gpt-4o', 'gpt-3.5-turbo'] },
-    { id: 'anthropic', name: 'Anthropic', icon: 'A', models: ['claude-3-opus', 'claude-3-sonnet'] },
-    { id: 'mistral', name: 'Mistral', icon: 'M', models: ['mistral-large', 'mistral-medium'] },
-    { id: 'llama', name: 'Llama', icon: 'L', models: ['llama-3.3'] },
-    { 
-      id: 'pollinations', 
-      name: 'Pollinations', 
-      icon: 'P', 
-      models: [
-        'anthropic-claude-3-sonnet',
-        'anthropic-claude-3-opus',
-        'anthropic-claude-3-haiku',
-        'google-gemini-pro',
-        'google-gemini-flash',
-        'openai-gpt-4-turbo',
-        'openai-gpt-3.5-turbo',
-        'mistral-medium',
-        'mistral-small',
-        'mixtral-8x7b',
-        'llama-3-70b',
-        'assistant-pollinations'
-      ] 
-    },
-  ];
-
-  // Load saved prompts from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem('saved_prompts');
-    if (stored) {
-      try {
-        setSavedPrompts(JSON.parse(stored));
-      } catch (e) {
-        console.error('Failed to parse saved prompts', e);
-      }
-    }
-  }, []);
-
-  // Load saved model from localStorage
-  useEffect(() => {
-    const savedModel = localStorage.getItem('selected_model');
-    if (savedModel) {
-      setSelectedModel(savedModel);
-      setActiveTextModel(savedModel);
-    }
-    setMounted(true);
-  }, []);
-
-  // Create a new chat
-  const handleNewChat = () => {
-    const newChatId = createChat();
-    
-    // Reset the input and UI state
-    setShowModelSelector(false);
-    setShowSettings(false);
-    
-    // On mobile, hide the sidebar after creating a new chat
-    if (isMobile) {
-      setShowSidebar(false);
-    }
-    
-    // Log creation for debugging
-    console.log(`Created new chat with ID: ${newChatId}`);
-    
-    // Show success toast
-    toasts.success("New chat created");
-    
-    // Force scroll to bottom after a short delay to ensure the DOM has updated
-    setTimeout(() => {
-      scrollToBottom();
-    }, 100);
-  };
-
-  // Select a model
-  const selectModel = (endpointId: string, model: string) => {
-    setActiveTextModel(`${endpointId}-${model}`);
-    setSelectedModel(`${endpointId}-${model}`);
-    setShowModelSelector(false);
-    
-    // Save the selected model to localStorage
-    localStorage.setItem('selected_model', `${endpointId}-${model}`);
-    
-    toasts.success(`Now using ${endpointId.charAt(0).toUpperCase() + endpointId.slice(1)} ${model}`);
-  };
-
-  // Get current model display name
-  const getModelDisplayName = () => {
-    if (!activeTextModel) return 'Select a model';
-    
-    const parts = activeTextModel.split('-');
-    if (parts.length < 2) return activeTextModel; // Return as is if no dash present
-    
-    const [endpointId, ...modelNameParts] = parts;
-    const modelName = modelNameParts.join('-');
-    const endpoint = endpoints.find(e => e.id === endpointId);
-    
-    // Remove provider name from model if it starts with the same string
-    let displayModelName = modelName;
-    if (endpoint && modelName.toLowerCase().startsWith(endpointId.toLowerCase())) {
-      displayModelName = modelName.substring(endpointId.length).replace(/^[-\s]+/, '');
-    }
-    
-    return endpoint ? `${endpoint.name} ${displayModelName.charAt(0).toUpperCase() + displayModelName.slice(1)}` : activeTextModel;
-  };
-
-  // Handle responsive sidebar
-  useEffect(() => {
-    const checkMobile = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      setShowSidebar(!mobile);
-    };
-    
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Scroll to bottom of messages
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // Add useEffect for auto-scrolling
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]); // Dependency array includes messages
+
+  // Add an effect to close the account menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (showAccountMenu) {
+        setShowAccountMenu(false);
+      }
+    }
+    
+    // Add event listener for mousedown outside component
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showAccountMenu]);
+
+  const handleNewChat = () => {
+    try {
+      resetAll();
+      const newChatId = createChat();
+      setIsNewChat(true);
+      router.push(`/chat`);
+      showSuccess('Started new chat');
+    } catch (error) {
+      logError({
+        error: error instanceof Error ? error.toString() : 'Failed to create new chat',
+        context: 'Chat Creation'
+      });
+      showError('Could not create new chat. Please try again.');
+    }
   };
+
+  const handleModelChange = (model: string) => {
+    try {
+      setActiveTextModel(model);
+      showSuccess(`Switched to ${getModelDisplayName(model)}`);
+    } catch (error) {
+      logError({
+        error: error instanceof Error ? error.toString() : 'Failed to switch model',
+        context: 'Model Switch'
+      });
+      showError('Could not switch models. Please try again.');
+    }
+  };
+
+  const handleWelcomeSubmit = async (content: string) => {
+    if (!content.trim()) return;
+
+    try {
+      // Start loading state
+      const loadingMessage = { role: "assistant", content: [{ type: "text", content: "..." }] };
+      addMessage({ role: "user", content: [{ type: "text", content }] });
+      
+      // Clear loading message once real response comes
+      setIsNewChat(false);
+    } catch (error) {
+      logError({
+        error: error instanceof Error ? error.toString() : 'Failed to send message',
+        context: 'Message Submit',
+        additionalData: { content }
+      });
+      showError('Could not send message. Please try again.');
+    }
+  };
+
+  // Add automatic retry for failed messages
+  const retryMessage = async (messageIndex: number) => {
+    try {
+      const messages = getActiveChatMessages();
+      const messageToRetry = messages[messageIndex];
+      
+      if (!messageToRetry) {
+        throw new Error('Message not found');
+      }
+
+      // Remove failed message and try again
+      messages.splice(messageIndex, 1);
+      addMessage(messageToRetry);
+      showSuccess('Retrying message...');
+    } catch (error) {
+      logError({
+        error: error instanceof Error ? error.toString() : 'Failed to retry message',
+        context: 'Message Retry'
+      });
+      showError('Could not retry message. Please try again.');
+    }
+  };
+
+  // Add connection status monitoring
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    scrollToBottom();
+    const handleOnline = () => {
+      setIsOnline(true);
+      showSuccess('Back online');
+    };
+    
+    const handleOffline = () => {
+      setIsOnline(false);
+      showError('You are offline. Messages will be queued.');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
-  // Fix model selection dropdown visibility
-  const toggleModelSelector = () => {
-    setShowModelSelector(!showModelSelector);
+  // Add message queue for offline mode
+  const [messageQueue, setMessageQueue] = useState<Message[]>([]);
+
+  useEffect(() => {
+    if (isOnline && messageQueue.length > 0) {
+      const processQueue = async () => {
+        for (const message of messageQueue) {
+          try {
+            await addMessage(message);
+          } catch (error) {
+            logError({
+              error: error instanceof Error ? error.toString() : 'Failed to process queued message',
+              context: 'Queue Processing'
+            });
+          }
+        }
+        setMessageQueue([]);
+      };
+      processQueue();
+    }
+  }, [isOnline, messageQueue]);
+
+  // Get model name for display
+  const getModelDisplayName = (modelId: string) => {
+    const model = AVAILABLE_MODELS.TEXT.find(m => m.id === modelId);
+    return model ? model.name : modelId;
   };
 
-  // Fix settings button
-  const handleOpenSettings = () => {
-    setShowSettings(true);
+  // Attempt to get a reasonable user name, fallback to "User"
+  const userName = userDetails?.full_name || user?.email?.split('@')[0] || 'User'; 
+
+  // Get voice options from the openai-audio model
+  const availableVoices = AVAILABLE_MODELS.TEXT.find(model => model.id === 'openai-audio')?.voices || 
+    ['nova', 'alloy', 'echo', 'fable', 'onyx', 'shimmer'];
+
+  // Smart retry with exponential backoff
+  const smartRetry = async (operation: () => Promise<any>, maxRetries = 3) => {
+    try {
+      setRetryCount(prev => prev + 1);
+      const backoffTime = Math.min(1000 * Math.pow(2, retryCount), 8000);
+      await new Promise(resolve => setTimeout(resolve, backoffTime));
+      const result = await operation();
+      setRetryCount(0);
+      return result;
+    } catch (error) {
+      if (retryCount < maxRetries) {
+        showError(`Retrying... (${retryCount + 1}/${maxRetries})`);
+        return smartRetry(operation, maxRetries);
+      }
+      throw error;
+    }
   };
 
-  // Prevent rendering until after client-side hydration
+  // Keyboard shortcuts
+  useHotkeys(KEYBOARD_SHORTCUTS.newChat, (e) => {
+    e.preventDefault();
+    handleNewChat();
+  });
+
+  useHotkeys(KEYBOARD_SHORTCUTS.clearChat, (e) => {
+    e.preventDefault();
+    resetAll();
+    showSuccess('Chat cleared');
+  });
+
+  useHotkeys(KEYBOARD_SHORTCUTS.focusInput, (e) => {
+    if (e.target === document.body) {
+      e.preventDefault();
+      inputRef.current?.focus();
+    }
+  });
+
+  useHotkeys(KEYBOARD_SHORTCUTS.toggleModel, (e) => {
+    e.preventDefault();
+    setShowAllModels(prev => !prev);
+  });
+
+  // Enhanced message handling
+  const handleMessageSubmit = async (content: string) => {
+    if (!content.trim() || !isOnline) {
+      if (!isOnline) {
+        setMessageQueue(prev => [...prev, { role: "user", content: [{ type: "text", content }] }]);
+        showInfo('Message queued - will send when back online');
+      }
+      return;
+    }
+
+    try {
+      await smartRetry(async () => {
+        await addMessage({ role: "user", content: [{ type: "text", content }] });
+      });
+
+      // Auto-scroll and clear any previous errors
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      setLastError(null);
+    } catch (error) {
+      logError({
+        error: error instanceof Error ? error.toString() : 'Failed to send message',
+        context: 'Message Submit',
+        additionalData: { content, retryCount }
+      });
+      setLastError('Failed to send message');
+      showError('Message failed to send. Will retry automatically.');
+    }
+  };
+
+  // Add keyboard shortcuts modal
+  const KeyboardShortcutsModal = () => (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowKeyboardShortcuts(false)}>
+      <div className="bg-zinc-800 p-6 rounded-lg max-w-md w-full" onClick={e => e.stopPropagation()}>
+        <h3 className="text-xl font-bold mb-4 text-zinc-100">Keyboard Shortcuts</h3>
+        <div className="space-y-3">
+          {Object.entries(KEYBOARD_SHORTCUTS).map(([action, key]) => (
+            <div key={action} className="flex justify-between">
+              <span className="text-zinc-300">{action.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>
+              <kbd className="px-2 py-1 bg-zinc-700 rounded text-sm">{key}</kbd>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const handleSubmit = async (content: string) => {
+    if (!content.trim()) return;
+
+    try {
+      // Add user message
+      addMessage({ role: "user", content: [{ type: "text", content }] });
+      
+      // Set generating state
+      setIsGenerating(true);
+
+      // Send request to API
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: getActiveChatMessages(),
+          model: activeTextModel,
+          systemPrompt: activeAgent?.systemPrompt,
+          agent: activeAgent
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to get response');
+      }
+
+      // Add assistant message
+      addMessage({
+        role: "assistant",
+        content: [{ type: "text", content: data.message }]
+      });
+
+      setIsNewChat(false);
+    } catch (error) {
+      console.error('Error in handleSubmit:', error);
+      showError(error instanceof Error ? error.message : 'Failed to send message');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   if (!mounted) {
-    return null;
+    // Simple loading state
+    return <div className="h-screen w-screen bg-zinc-900"></div>;
   }
 
-  // Add this before the return statement
-  const SettingsModal = () => {
-    if (!showSettings) return null;
-    
-    return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
-        <div className="bg-card w-full max-w-md rounded-lg shadow-lg border border-border overflow-hidden">
-          <div className="flex items-center justify-between p-4 border-b border-border">
-            <h3 className="font-semibold">Chat Settings</h3>
-            <button 
-              onClick={() => setShowSettings(false)}
-              className="p-1.5 rounded-md hover:bg-muted/50"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>
-              </svg>
-            </button>
+  // Main content display based on whether there are messages
+  const MainContent = () => {
+    if (isNewChat) {
+      // Gemini-style Welcome Screen
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 pb-20">
+          <div className="mb-4">
+             {/* Replace with Google Logo SVG */} 
+             <svg className="w-12 h-12 text-zinc-100" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.0002 11.2424C14.3381 11.2424 16.2426 9.33785 16.2426 7C16.2426 4.66215 14.3381 2.75757 12.0002 2.75757C9.6623 2.75757 7.75772 4.66215 7.75772 7C7.75772 9.33785 9.6623 11.2424 12.0002 11.2424Z" fill="currentColor"/><path d="M11.9999 21.2424C16.142 21.2424 19.5832 17.7902 19.5832 13.6481C19.5832 9.50596 16.142 6.06482 11.9999 6.06482C7.85778 6.06482 4.41656 9.50596 4.41656 13.6481C4.41656 17.7902 7.85778 21.2424 11.9999 21.2424Z" fill="currentColor"/></svg>
           </div>
-          
-          <div className="p-4">
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-3">Agent Selection</label>
-                <div className="space-y-2">
-                  {agents.map((agent: Agent) => (
-                    <div 
-                      key={agent.id}
-                      className={cn(
-                        "p-3 rounded-md border cursor-pointer transition-all",
-                        activeAgent.id === agent.id 
-                          ? "border-primary bg-primary/5" 
-                          : "border-border hover:border-primary/50"
-                      )}
-                      onClick={() => {
-                        setActiveAgent(agent);
-                        // Don't close the settings yet
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium">{agent.name}</div>
-                        {activeAgent.id === agent.id && (
-                          <div className="bg-primary text-primary-foreground rounded-full text-xs px-2 py-0.5">
-                            Active
-                          </div>
-                        )}
-                      </div>
-                      {agent.description && (
-                        <div className="text-sm text-muted-foreground mt-1">
-                          {agent.description}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-          
-              <div>
-                <label className="block text-sm font-medium mb-1">Preferred Model</label>
-                <select 
-                  value={selectedModel}
-                  onChange={(e) => {
-                    const [provider, model] = e.target.value.split('-');
-                    selectModel(provider, model);
-                  }}
-                  className="w-full p-2 rounded-md border border-border bg-background"
-                >
-                  {endpoints.map(endpoint => (
-                    endpoint.models.map(model => (
-                      <option 
-                        key={`${endpoint.id}-${model}`} 
-                        value={`${endpoint.id}-${model}`}
-                      >
-                        {endpoint.name} - {model}
-                      </option>
-                    ))
-                  ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">Interface Theme</label>
-                <select 
-                  value={theme}
-                  onChange={(e) => setTheme(e.target.value)}
-                  className="w-full p-2 rounded-md border border-border bg-background"
-                >
-                  <option value="system">System</option>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-1">Sidebar Display</label>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => setShowSidebar(true)}
-                    className={`px-3 py-1.5 rounded-md ${showSidebar ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
-                  >
-                    Show
-                  </button>
-                  <button
-                    onClick={() => setShowSidebar(false)}
-                    className={`px-3 py-1.5 rounded-md ${!showSidebar ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
-                  >
-                    Hide
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex justify-end p-4 border-t border-border">
-            <button
-              onClick={() => setShowSettings(false)}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              Done
-            </button>
-          </div>
+          <h1 className="text-3xl md:text-4xl font-medium text-zinc-200 mb-10">
+            Good evening, {userName} 
+          </h1>
+          {/* Input is handled by the main ChatInput component below */}
         </div>
-      </div>
-    );
+      );
+    } else {
+      // Gemini-style Chat View
+      return (
+        <div className="px-4 pb-4 pt-6" ref={chatContainerRef}>
+          <div className="max-w-3xl mx-auto space-y-6">
+            {messages.map((message, index) => (
+              <div 
+                key={index} 
+                className={`flex ${message.role === 'user' ? 'justify-end' : 'items-start gap-3'}`}
+              >
+                 {/* Assistant Avatar (Conditional) */}
+                 {message.role === 'assistant' && (
+                    <div className="w-7 h-7 rounded-full bg-zinc-600 flex items-center justify-center shrink-0 mt-1">
+                       <svg className="w-4 h-4 text-zinc-100" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.0002 11.2424C14.3381 11.2424 16.2426 9.33785 16.2426 7C16.2426 4.66215 14.3381 2.75757 12.0002 2.75757C9.6623 2.75757 7.75772 4.66215 7.75772 7C7.75772 9.33785 9.6623 11.2424 12.0002 11.2424Z" fill="currentColor"/><path d="M11.9999 21.2424C16.142 21.2424 19.5832 17.7902 19.5832 13.6481C19.5832 9.50596 16.142 6.06482 11.9999 6.06482C7.85778 6.06482 4.41656 9.50596 4.41656 13.6481C4.41656 17.7902 7.85778 21.2424 11.9999 21.2424Z" fill="currentColor"/></svg>
+                    </div>
+                 )}
+                 {/* Wrapper for Message Content and TTS Button */}
+                 <div className={`relative group flex-1 ${message.role === 'user' ? 'ml-auto max-w-[85%]' : 'max-w-[85%]'}`}> 
+                   {/* Actual Message Content Bubble/Text */} 
+                   <div 
+                     className={`text-zinc-200 leading-relaxed break-words ${ 
+                       message.role === 'user' 
+                         ? 'bg-zinc-700/80 p-3 rounded-lg float-right' 
+                         : 'p-2' 
+                     }`}
+                   >
+                     {message.content?.map((item, i) => (
+                        <div key={i}>
+                           {item.type === 'text' ? (
+                             <div 
+                               className="markdown-content prose prose-invert prose-sm max-w-none"
+                               dangerouslySetInnerHTML={renderMarkdown(item.content)} 
+                             />
+                           ) : item.type === 'image' ? (
+                             <div className="my-2">
+                               <img 
+                                 src={item.content} 
+                                 alt="Generated image" 
+                                 className="rounded-md max-w-full h-auto" 
+                               />
+                               <p className="text-xs text-zinc-400 mt-1">Generated image</p>
+                             </div>
+                           ) : (
+                             `[Unsupported content: ${item.type}]`
+                           )}
+                        </div>
+                     ))}
+                   </div>
+                   {/* TTS Button - Always visible for assistant messages, opacity changes on hover */} 
+                   {message.role === 'assistant' && message.content?.some(c => c.type === 'text') && (
+                       <button 
+                           className="absolute -right-2 -bottom-2 opacity-30 hover:opacity-100 transition-opacity p-1.5 bg-zinc-700 rounded-full text-zinc-400 hover:text-zinc-100 hover:bg-zinc-600"
+                           onClick={() => {
+                               const textToSpeak = message.content?.find(c => c.type === 'text')?.content;
+                               if (textToSpeak) {
+                                   // Use Pollinations AI for TTS - with exact=true to repeat exactly the same response
+                                   toasts.success("Playing voice with Pollinations AI");
+                                   
+                                   // Use selected voice or default to "nova"
+                                   const voice = useSettingsStore.getState().activeVoice || "nova";
+                                   
+                                   // Call Pollinations API to generate audio with exact=true parameter
+                                   generatePollinationsAudio(textToSpeak, voice, true)
+                                       .then(audioUrl => {
+                                           if (audioUrl) {
+                                               const audio = new Audio(audioUrl);
+                                               audio.play();
+                                           } else {
+                                               toasts.error("Failed to generate audio");
+                                           }
+                                       })
+                                       .catch(err => {
+                                           console.error("TTS error:", err);
+                                           toasts.error("Error generating audio");
+                                       });
+                               }
+                           }}
+                           title="Play exact message audio with Pollinations AI"
+                       >
+                           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                       </button>
+                   )}
+                 </div> { /* Closing div for the content/TTS wrapper */ }
+                 {/* User Avatar (Conditional) */}
+                 {message.role === 'user' && (
+                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center shrink-0 ml-3">
+                       <span className="text-xs font-medium text-white">{userName.charAt(0).toUpperCase()}</span> 
+                    </div>
+                 )}
+              </div> // Closing div for the entire message row
+            ))}
+            {/* Typing Indicator */} 
+            {isGenerating && (
+               <div className="flex items-start gap-3">
+                   <div className="w-7 h-7 rounded-full bg-zinc-600 flex items-center justify-center shrink-0 mt-1">
+                       {/* Placeholder G logo SVG */}
+                       <svg className="w-4 h-4 text-zinc-100" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.0002 11.2424C14.3381 11.2424 16.2426 9.33785 16.2426 7C16.2426 4.66215 14.3381 2.75757 12.0002 2.75757C9.6623 2.75757 7.75772 4.66215 7.75772 7C7.75772 9.33785 9.6623 11.2424 12.0002 11.2424Z" fill="currentColor"/><path d="M11.9999 21.2424C16.142 21.2424 19.5832 17.7902 19.5832 13.6481C19.5832 9.50596 16.142 6.06482 11.9999 6.06482C7.85778 6.06482 4.41656 9.50596 4.41656 13.6481C4.41656 17.7902 7.85778 21.2424 11.9999 21.2424Z" fill="currentColor"/></svg>
+                   </div>
+                  <div className="text-zinc-400 p-3">
+                     {/* Simple pulsing dot for typing indicator */} 
+                     <div className="w-2 h-2 bg-zinc-400 rounded-full animate-pulse"></div> 
+                  </div>
+               </div>
+            )}
+          </div>
+          {/* Scroll anchor */} 
+          <div ref={messagesEndRef} className="h-0" /> 
+        </div>
+      );
+    }
   };
 
-  return (
-    <div className="flex h-[calc(100vh-4rem)] relative overflow-hidden bg-background">
-      {/* Left sidebar - can be toggled on mobile */}
-      <aside 
-        className={cn(
-          "h-full border-r border-border bg-card/50 flex-shrink-0 transition-all duration-300 ease-in-out",
-          showSidebar ? "w-80" : "w-0",
-          isMobile ? "absolute left-0 top-0 z-20 shadow-lg" : "relative"
-        )}
-      >
-        <div className={cn("h-full overflow-auto", showSidebar ? "opacity-100" : "opacity-0", "transition-opacity duration-300")}>
-          <div className="p-4 border-b border-border">
-            <h2 className="font-semibold text-lg">Chat History</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your recent conversations
-            </p>
-          </div>
-          
-          <div className="p-3">
-            <Button 
-              variant="primary-gradient"
-              size="sm"
-              fullWidth={true}
-              leftIcon={
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14"></path>
-                  <path d="M5 12h14"></path>
-                </svg>
-              }
-              onClick={handleNewChat}
-            >
-              New Chat
-            </Button>
-          </div>
-          
-          <nav className="px-3 py-2">
-            <div className="space-y-1">
-              {/* Example chat history items */}
-              {Array.from({ length: 5 }).map((_, i) => (
-                <button 
-                  key={i}
-                  className="w-full flex items-center gap-3 rounded-md p-3 text-sm hover:bg-muted/50 qandu-transition-all"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17 6.1H3"></path>
-                    <path d="M21 12.1H3"></path>
-                    <path d="M15.1 18H3"></path>
-                  </svg>
-                  <div className="flex-1 text-left truncate">
-                    Chat Session {i + 1}
-                  </div>
-                  <div className="text-xs text-muted-foreground whitespace-nowrap">
-                    {i === 0 ? 'Just now' : `${i}d ago`}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </nav>
-        </div>
-      </aside>
+  // Group models into categories for easier selection
+  const modelGroups = {
+    // Standard models: no special capabilities and censored
+    standard: AVAILABLE_MODELS.TEXT.filter(model => 
+      !model.reasoning && 
+      !model.vision && 
+      !model.audio && 
+      model.censored !== false // Use this instead of uncensored
+    ),
+    // Reasoning models
+    reasoning: AVAILABLE_MODELS.TEXT.filter(model => 
+      model.reasoning === true
+    ),
+    // Models with vision or audio capabilities
+    multimodal: AVAILABLE_MODELS.TEXT.filter(model => 
+      (model.vision === true || model.audio === true) && !model.reasoning
+    )
+  };
 
-      {/* Main chat area */}
-      <div 
-        className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300 w-full"
-        ref={chatContainerRef}
-      >
-        {/* Chat header */}
-        <header className="p-4 border-b border-border flex items-center justify-between bg-card/30 backdrop-blur-sm">
-          <div className="flex items-center">
-            {/* Mobile sidebar toggle */}
-            <button 
-              onClick={() => setShowSidebar(!showSidebar)}
-              className="mr-3 p-2 rounded-md hover:bg-muted/50 qandu-transition-all"
-              aria-label={showSidebar ? "Close sidebar" : "Open sidebar"}
-            >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                width="20" 
-                height="20" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-              >
-                <path d="M3 7h18"></path>
-                <path d="M3 12h18"></path>
-                <path d="M3 17h18"></path>
-              </svg>
-            </button>
+  // Get top 5 models to show in collapsed view
+  const topModels = [
+    'openai',
+    'openai-large',
+    'mistral',
+    'llama',
+    'qwen-coder'
+  ].filter(modelId => availableModels.includes(modelId));
+
+  // Main Layout - Adjust flex structure for sticky footer
+  return (
+    <div className="flex h-screen flex-col overflow-hidden bg-zinc-900 text-zinc-200">
+      {/* Header remains at the top */}
+      <header className="px-4 py-3 flex items-center justify-between border-b border-zinc-700/50 shrink-0 z-10">
+        {/* Left side of Header - Restored with model and agent selectors */}
+        <div className="flex items-center gap-3">
+          {/* Model Selector */}
+          <Select value={activeTextModel} onValueChange={handleModelChange}>
+            <SelectTrigger className="h-9 pl-3 pr-2 text-sm font-medium border border-zinc-700 bg-zinc-800 hover:bg-zinc-700/60 focus:ring-0 focus:border-zinc-600 rounded-md text-zinc-100 max-w-[260px]">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-zinc-100" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12.0002 11.2424C14.3381 11.2424 16.2426 9.33785 16.2426 7C16.2426 4.66215 14.3381 2.75757 12.0002 2.75757C9.6623 2.75757 7.75772 4.66215 7.75772 7C7.75772 9.33785 9.6623 11.2424 12.0002 11.2424Z" fill="currentColor"/><path d="M11.9999 21.2424C16.142 21.2424 19.5832 17.7902 19.5832 13.6481C19.5832 9.50596 16.142 6.06482 11.9999 6.06482C7.85778 6.06482 4.41656 9.50596 4.41656 13.6481C4.41656 17.7902 7.85778 21.2424 11.9999 21.2424Z" fill="currentColor"/></svg>
+                <span className="truncate max-w-[180px]">{getModelDisplayName(activeTextModel)}</span>
+              </div>
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-800 border-zinc-700 text-zinc-100 max-h-[400px]">
+              {/* Toggle button */}
+              <div className="px-2 py-1.5 mb-1 border-b border-zinc-700">
+                <button 
+                  type="button"
+                  className="w-full text-xs justify-between flex items-center text-zinc-400 hover:text-zinc-300 py-1 px-2 rounded hover:bg-zinc-700/50"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowAllModels(!showAllModels); }}
+                >
+                  {showAllModels ? 'Show Fewer Models' : 'Show All Models'} 
+                  {showAllModels ? 
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg> : 
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  }
+                </button>
+              </div>
+              {/* Conditional model rendering */}                  
+              {!showAllModels ? (
+                <div className="py-1">
+                  {topModels.map((modelId) => {
+                    const model = AVAILABLE_MODELS.TEXT.find(m => m.id === modelId);
+                    if (!model) return null;
+                    return (
+                      <SelectItem key={modelId} value={modelId} className="text-sm hover:bg-zinc-700 focus:bg-zinc-700">
+                        {model.name}
+                      </SelectItem>
+                    );
+                  })}
+                </div>
+              ) : (
+                <>
+                  {/* Standard Models */}
+                  {modelGroups.standard.length > 0 && (
+                    <div className="py-1">
+                      <div className="px-2 pt-1 pb-1 text-xs text-zinc-500 font-medium">Standard Models</div>
+                      {modelGroups.standard.map((model) => (
+                        <SelectItem key={model.id} value={model.id} className="text-sm hover:bg-zinc-700 focus:bg-zinc-700">
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </div>
+                  )}
+                  {/* Reasoning Models */}
+                  {modelGroups.reasoning.length > 0 && (
+                    <div className="py-1 border-t border-zinc-700">
+                      <div className="px-2 pt-1 pb-1 text-xs text-zinc-500 font-medium">Reasoning Models</div>
+                      {modelGroups.reasoning.map((model) => (
+                        <SelectItem key={model.id} value={model.id} className="text-sm hover:bg-zinc-700 focus:bg-zinc-700">
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </div>
+                  )}
+                  {/* Multimodal Models */}
+                  {modelGroups.multimodal.length > 0 && (
+                    <div className="py-1 border-t border-zinc-700">
+                      <div className="px-2 pt-1 pb-1 text-xs text-zinc-500 font-medium">Multimodal Models</div>
+                      {modelGroups.multimodal.map((model) => (
+                        <SelectItem key={model.id} value={model.id} className="text-sm hover:bg-zinc-700 focus:bg-zinc-700">
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </div>
+                  )}
+                </> 
+              )}
+            </SelectContent>
+          </Select>
+
+          {/* Agent Selector */}
+          <Select value={activeAgent?.id || "default"} onValueChange={(agentId) => {
+            if (agentId === "manage") {
+              // Navigate to the agents page
+              router.push('/agents');
+              return;
+            }
             
-            {/* Chat title */}
-            <div>
-              <h1 className="font-semibold">New Conversation</h1>
-              <p className="text-xs text-muted-foreground">Started today at 2:30 PM</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            {/* Model selection - moved before agent switcher */}
-            <div className="relative model-selector">
-              <button 
-                onClick={toggleModelSelector}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-border hover:bg-muted/50 qandu-transition-all"
-              >
-                <span className="text-sm">{getModelDisplayName()}</span>
-                <ChevronDown size={16} />
-              </button>
-              
-              {showModelSelector && (
-                <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-md shadow-lg z-[100] w-56 overflow-hidden">
-                  <div className="max-h-64 overflow-y-auto">
-                    {endpoints.map((endpoint) => (
-                      <div key={endpoint.id} className="p-2 border-b border-border last:border-0">
-                        <div className="font-medium text-sm px-2 py-1">{endpoint.name}</div>
-                        <div className="space-y-1 mt-1">
-                          {endpoint.models.map((model) => (
-                            <button
-                              key={`${endpoint.id}-${model}`}
-                              className={cn(
-                                "w-full text-left px-2 py-1.5 text-sm rounded hover:bg-muted qandu-transition-all",
-                                activeTextModel === `${endpoint.id}-${model}` ? "bg-primary/10 text-primary" : ""
-                              )}
-                              onClick={() => selectModel(endpoint.id, model)}
-                            >
-                              {model.charAt(0).toUpperCase() + model.slice(1)}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+            if (agentId === "default") {
+              // Reset to default agent
+              setActiveAgent(null);
+              return;
+            }
+            
+            // Find and set the selected agent
+            const selectedAgent = agents.find(a => a.id === agentId);
+            if (selectedAgent) {
+              setActiveAgent(selectedAgent);
+              // Show toast notification with our improved toast system
+              toasts.success(`Agent ${selectedAgent.name} selected`);
+            }
+          }}>
+            <SelectTrigger className="h-9 pl-3 pr-2 text-sm font-medium border border-zinc-700 bg-zinc-800 hover:bg-zinc-700/60 focus:ring-0 focus:border-zinc-600 rounded-md text-zinc-100 max-w-[180px]">
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="5" />
+                  <path d="M20 21a8 8 0 0 0-16 0" />
+                </svg>
+                <span className="truncate max-w-[120px]">{activeAgent?.name || "Default Agent"}</span>
+              </div>
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-800 border-zinc-700 text-zinc-100">
+              <SelectItem value="default" className="text-sm hover:bg-zinc-700 focus:bg-zinc-700">
+                Default Agent
+              </SelectItem>
+              <div className="py-1 border-t border-zinc-700">
+                <div className="px-2 pt-1 pb-1 text-xs text-zinc-500 font-medium">My Agents</div>
+                {agents.length === 0 ? (
+                  <div className="px-2 py-2 text-xs text-zinc-400">
+                    No custom agents found
                   </div>
+                ) : (
+                  agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.id} className="text-sm hover:bg-zinc-700 focus:bg-zinc-700">
+                      {agent.name}
+                    </SelectItem>
+                  ))
+                )}
+              </div>
+              <div className="py-1 border-t border-zinc-700">
+                <SelectItem value="manage" className="text-sm hover:bg-zinc-700 focus:bg-zinc-700 text-blue-400">
+                  Manage Agents...
+                </SelectItem>
+              </div>
+            </SelectContent>
+          </Select>
+          
+          {/* New Chat Button */}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="text-zinc-400 hover:text-zinc-100 flex items-center gap-1 text-xs"
+            onClick={handleNewChat}
+          > 
+            <Plus size={16} /> 
+            <span>New Chat</span>
+          </Button>
+        </div>
+        {/* Right side of Header */}
+        <div className="flex items-center gap-2">
+           {/* User Account Button with Dropdown */}
+           <div className="relative">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="text-zinc-400 hover:text-zinc-100 rounded-full"
+                onClick={() => setShowAccountMenu(!showAccountMenu)}
+              >
+                <CircleUser size={22} />
+              </Button>
+              
+              {/* Account Dropdown Menu */}
+              {showAccountMenu && (
+                <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg overflow-hidden z-50">
+                  <div className="p-2 border-b border-zinc-700 text-sm text-zinc-300">
+                    {userName || 'User Account'}
+                  </div>
+                  <ul>
+                    <li>
+                      <Link href="/dashboard" className="flex items-center gap-2 px-4 py-2 text-zinc-300 hover:bg-zinc-700">
+                        <MessageSquare size={16} />
+                        <span>Dashboard</span>
+                      </Link>
+                    </li>
+                    <li>
+                      <Link href="/settings" className="flex items-center gap-2 px-4 py-2 text-zinc-300 hover:bg-zinc-700">
+                        <SettingsIcon size={16} />
+                        <span>Settings</span>
+                      </Link>
+                    </li>
+                    <li className="border-t border-zinc-700">
+                      <button 
+                        className="flex items-center gap-2 px-4 py-2 text-red-400 hover:bg-zinc-700 w-full text-left"
+                        onClick={() => {
+                          // Handle logout
+                          router.push('/logout');
+                        }}
+                      >
+                        <LogOut size={16} />
+                        <span>Sign Out</span>
+                      </button>
+                    </li>
+                  </ul>
                 </div>
               )}
-            </div>
-            
-            {/* Agent selection dropdown */}
-            <AgentSwitcher />
-            
-            <button 
-              className="p-2 rounded-md hover:bg-muted/50 qandu-transition-all"
-              aria-label="Chat settings"
-              onClick={handleOpenSettings}
-            >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                width="20" 
-                height="20" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2" 
-                strokeLinecap="round" 
-                strokeLinejoin="round"
-              >
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
-            </button>
-          </div>
-        </header>
-        
-        {/* Chat messages */}
-        <div className="flex-1 overflow-y-auto p-4 pb-0">
-          <ChatMessages theme={theme || 'light'} />
-          <div ref={messagesEndRef} />
+           </div>
+           {/* Add keyboard shortcuts button */}
+           <button
+             onClick={() => setShowKeyboardShortcuts(true)}
+             className="p-2 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+             title="Keyboard shortcuts"
+           >
+             <Keyboard size={20} />
+           </button>
         </div>
+      </header>
 
-        {/* Chat input */}
-        <div className="p-4 border-t border-border bg-card/30 backdrop-blur-sm">
-          <ChatInput />
+      {/* Message list area - SINGLE scrollable container */}
+      <main className="flex-1 overflow-hidden relative">
+        <div className="absolute inset-0 overflow-y-auto">
+          <MainContent />
+          {/* Scroll anchor inside the scrolling container */}
+          <div ref={messagesEndRef} className="h-0" />
         </div>
+      </main>
+
+      {/* Input/Footer area - fixed at the bottom */}
+      <div className="px-4 pb-3 pt-2 border-t border-zinc-700/50 shrink-0 bg-zinc-900 z-10">
+         <ChatInput 
+           onSubmit={handleSubmit} 
+           key={isNewChat ? 'welcome-input' : 'chat-input'} 
+           ref={inputRef}
+         />
+         <p className="text-xs text-zinc-500 text-center pt-2">
+           AI assistants may display inaccurate info, including about people, so double-check responses. 
+           <Link href="/privacy" className="underline hover:text-zinc-400 mx-1">Privacy policy</Link>
+           <Link href="/terms" className="underline hover:text-zinc-400 mx-1">Terms of service</Link>
+         </p>
       </div>
-      
-      {/* Settings Modal */}
-      <SettingsModal />
+
+      {/* Show keyboard shortcuts modal */}
+      {showKeyboardShortcuts && <KeyboardShortcutsModal />}
     </div>
   );
 } 

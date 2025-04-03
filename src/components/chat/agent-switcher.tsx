@@ -27,14 +27,14 @@ export function AgentSwitcher() {
     <div className="relative" ref={dropdownRef}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-card/60 hover:bg-card/80 text-foreground transition-colors"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
         <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center text-[10px] text-primary-foreground font-medium">
-          {activeAgent.name.charAt(0)}
+          {activeAgent?.name?.charAt(0) || 'G'}
         </div>
-        <span className="text-sm font-medium max-w-[120px] truncate">{activeAgent.name}</span>
+        <span className="text-sm font-medium max-w-[120px] truncate">{activeAgent?.name || 'General Assistant'}</span>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="14" 
@@ -52,9 +52,7 @@ export function AgentSwitcher() {
       </button>
       
       {isOpen && (
-        <div 
-          className="fixed md:absolute top-[calc(100%+5px)] left-0 md:left-0 w-72 md:w-64 bg-card rounded-md border border-border shadow-lg overflow-hidden z-[100]"
-        >
+        <div className="fixed md:absolute top-[calc(100%+5px)] left-0 w-72 md:w-64 bg-card rounded-md border border-border shadow-lg overflow-hidden z-[100]">
           <div className="p-2 border-b border-border">
             <h3 className="text-xs font-semibold text-muted-foreground">SWITCH AGENT</h3>
           </div>
@@ -64,7 +62,7 @@ export function AgentSwitcher() {
                 key={agent.id}
                 className={cn(
                   "w-full text-left p-2 hover:bg-muted/50 flex items-start gap-2 transition-colors",
-                  agent.id === activeAgent.id ? "bg-primary/10" : ""
+                  agent.id === activeAgent?.id ? "bg-primary/10" : ""
                 )}
                 onClick={() => {
                   setActiveAgent(agent);
@@ -80,7 +78,7 @@ export function AgentSwitcher() {
                     <div className="text-xs text-muted-foreground mt-0.5 truncate">{agent.description}</div>
                   )}
                 </div>
-                {agent.id === activeAgent.id && (
+                {agent.id === activeAgent?.id && (
                   <div className="ml-auto">
                     <div className="w-2 h-2 rounded-full bg-primary"></div>
                   </div>

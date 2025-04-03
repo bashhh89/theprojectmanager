@@ -2,16 +2,18 @@ import RegisterForm from '@/components/auth/RegisterForm';
 
 export default function RegisterPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold">Create Account</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Register to start building your own AI agents
-          </p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-900">
+      <div className="relative z-10 w-full max-w-md py-12 px-4">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-white mb-2">QanDu AI</h1>
+          <p className="text-zinc-400">Create your AI assistant account</p>
         </div>
         
         <RegisterForm />
+        
+        <div className="mt-10 text-center text-zinc-500 text-xs">
+          &copy; {new Date().getFullYear()} QanDu AI. All rights reserved.
+        </div>
       </div>
     </div>
   );

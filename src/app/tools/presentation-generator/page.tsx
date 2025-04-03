@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, FileText, Briefcase } from 'lucide-react';
+import { Loader2, FileText, Briefcase, Save } from 'lucide-react';
 import { marked } from 'marked';
 
 interface SlideData {
@@ -27,6 +27,7 @@ interface SlideData {
 }
 
 type PresentationType = 'general' | 'proposal';
+type SaveStatus = 'idle' | 'saving' | 'success' | 'error';
 
 export default function PresentationGeneratorPage() {
   const [topic, setTopic] = useState('');
@@ -38,6 +39,8 @@ export default function PresentationGeneratorPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [showPresentation, setShowPresentation] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [selectedType, setSelectedType] = useState<PresentationType>('general');
   const [selectedBrand, setSelectedBrand] = useState<BrandProfile | null>(null);
@@ -73,6 +76,8 @@ export default function PresentationGeneratorPage() {
     }
 
     setIsGenerating(true);
+    setSaveStatus('idle');
+    setSaveError(null);
     
     try {
       const requestBody = {
@@ -138,8 +143,51 @@ export default function PresentationGeneratorPage() {
   
   const handlePDFExport = () => {
     setIsExporting(true);
-    toasts.success('PDF export complete');
-    setIsExporting(false);
+    toasts.info('PDF export functionality is not yet implemented.');
+    setTimeout(() => setIsExporting(false), 1000);
+  };
+
+  const handleSavePresentation = async () => {
+    setSaveStatus('saving');
+    setSaveError(null);
+
+    let presentationTitle = 'Untitled Presentation';
+    if (selectedType === 'general' && topic) {
+      presentationTitle = topic;
+    } else if (selectedType === 'proposal' && clientName) {
+      presentationTitle = `${clientName} - ${projectGoal || 'Proposal'}`;
+    } else if (topic) {
+        presentationTitle = topic;
+    }
+
+    const payload = {
+      title: presentationTitle,
+      type: selectedType,
+      slides: slides,
+      brandProfile: applyBrandStyling ? selectedBrand : null,
+    };
+
+    try {
+      const response = await fetch('/api/save-presentation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to save: ${response.statusText}`);
+      }
+
+      setSaveStatus('success');
+      toasts.success('Presentation saved successfully!');
+
+    } catch (err: any) {
+      console.error('Error saving presentation:', err);
+      setSaveError(err.message || 'An unknown error occurred while saving.');
+      setSaveStatus('error');
+      toasts.error(`Failed to save presentation: ${err.message}`);
+    }
   };
 
   return (
@@ -245,14 +293,27 @@ export default function PresentationGeneratorPage() {
       </div>
       
       <div style={{ display: showPresentation ? 'flex' : 'none', flex: 1, flexDirection: 'column' }}>
-          <div className="mb-4 flex justify-between items-center">
+          <div className="mb-4 flex flex-wrap gap-2 justify-between items-center">
             <Button variant="outline" onClick={() => setShowPresentation(false)}>
-                Back to Editor
+                &larr; Back to Editor
             </Button>
-            <Button onClick={handlePDFExport} disabled={isExporting}>
-                {isExporting ? 'Exporting...' : 'Export PDF'}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSavePresentation}
+                disabled={saveStatus === 'saving' || saveStatus === 'success'}
+              >
+                {saveStatus === 'saving' && <Loader2 className="h-4 w-4 mr-2 animate-spin"/>}
+                {saveStatus === 'success' ? 'Saved!' : 'Save Presentation'}
+                {saveStatus !== 'saving' && saveStatus !== 'success' && <Save className="h-4 w-4 ml-2" />}
+              </Button>
+              <Button variant="secondary" onClick={handlePDFExport} disabled={isExporting}>
+                  {isExporting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin"/> Exporting...</> : 'Export PDF'}
+              </Button>
+            </div>
           </div>
+          {saveStatus === 'error' && (
+             <p className="text-red-500 text-sm mb-2">Error saving: {saveError}</p>
+          )}
           <div style={{ 
               flex: 1, 
               position: 'relative', 

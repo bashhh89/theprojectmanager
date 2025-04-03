@@ -36,6 +36,7 @@ interface ChatState {
   getActiveChatMessages: () => Message[]
   getChatById: (id: string) => ChatSession | undefined
   clearMessages: () => void
+  resetAll: () => void
 }
 
 export const useChatStore = create<ChatState>()(
@@ -130,7 +131,14 @@ export const useChatStore = create<ChatState>()(
             chat.id === activeChatId ? { ...chat, messages: [] } : chat
           )
         };
-      })
+      }),
+      
+      resetAll: () => set((state) => ({
+        chatSessions: [],
+        activeChatId: null,
+        inputValue: '',
+        isGenerating: false
+      }))
     }),
     {
       name: 'chat-storage',

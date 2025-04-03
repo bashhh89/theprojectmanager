@@ -4,41 +4,74 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
-const publicRoutes = ['/', '/login', '/signup', '/auth'];
+// Updated with more comprehensive public routes
+const publicRoutes = [
+  '/', 
+  '/login', 
+  '/signup', 
+  '/register',
+  '/auth',
+  '/forgot-password',
+  '/reset-password',
+  '/register/confirmation'
+];
 
 export default function AuthWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { loading, user } = useAuth();
-  const [mounted, setMounted] = useState(false);
+  // Use true as initial state to avoid blank screen
+  const [mounted, setMounted] = useState(true);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!loading && !user && !publicRoutes.includes(pathname)) {
+    // Redirect to login if not authenticated and not on public route
+    const cleanedPathname = pathname.endsWith('/') && pathname.length > 1 
+      ? pathname.slice(0, -1) 
+      : pathname;
+      
+    if (!loading && !user && !publicRoutes.includes(cleanedPathname)) {
+      console.log("AuthWrapper: Redirecting to /login");
       router.push('/login');
     }
   }, [loading, user, pathname, router]);
 
-  // Show nothing until mounted to prevent hydration mismatch
-  if (!mounted) return null;
+  // Check if current route is public
+  const cleanedPathname = pathname.endsWith('/') && pathname.length > 1 
+    ? pathname.slice(0, -1) 
+    : pathname;
+  const isPublicRoute = publicRoutes.includes(cleanedPathname);
 
-  // Show loading state
+  // For public routes, always render children immediately
+  if (isPublicRoute) {
+    console.log("AuthWrapper: Public route, rendering children immediately", { pathname, cleanedPathname });
+    return <>{children}</>;
+  }
+
+  // For protected routes, apply normal loading/auth checks
+  
+  // Ensure component is mounted  
+  if (!mounted) {
+    console.log("AuthWrapper: Not mounted, returning null");
+    return null;
+  }
+
+  // Show loading state for protected routes
   if (loading) {
+    console.log("AuthWrapper: Loading auth state...");
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-32 w-32 animate-spin rounded-full border-b-2 border-primary"></div>
+      <div className="flex min-h-screen items-center justify-center bg-zinc-900">
+        <p className="text-zinc-400">Loading...</p>
       </div>
     );
   }
 
-  // For public routes, or when user is authenticated
-  if (publicRoutes.includes(pathname) || user) {
+  // For authenticated users on protected routes
+  if (user) {
+    console.log("AuthWrapper: User authenticated, rendering children", { user: !!user });
     return <>{children}</>;
   }
 
-  // Don't render anything while redirecting
+  // Don't render anything for unauthenticated users on protected routes (while redirecting)
+  console.log("AuthWrapper: Not public, not authenticated, returning null for redirect", { pathname });
   return null;
 } 

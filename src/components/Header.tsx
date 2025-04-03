@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { DropdownMenuItem } from '@radix-ui/react-dropdown-menu';
+import { Settings } from 'lucide-react';
 
 const Header = () => {
   const { theme, setTheme } = useTheme();
@@ -145,6 +147,7 @@ const Header = () => {
               </div>
 
               <Link href="/dashboard" className="text-foreground hover:text-primary qandu-transition-all">Dashboard</Link>
+              <Link href="/admin" className="text-foreground hover:text-primary qandu-transition-all">Admin</Link>
             </nav>
           )}
           
@@ -269,6 +272,21 @@ const Header = () => {
                   </svg>
                   <span>Dashboard</span>
                 </Link>
+
+                <Link href="/admin" className="flex items-center space-x-2 text-foreground hover:text-primary py-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                  </svg>
+                  <span>Admin</span>
+                </Link>
+
+                {/* Add Settings link before Logout */}
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>Settings</span>
+                  </Link>
+                </DropdownMenuItem>
               </>
             ) : (
               <>

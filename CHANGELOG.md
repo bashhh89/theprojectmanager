@@ -1,6 +1,29 @@
 # Chat Application Changelog
 
-## Latest Updates (2023-10-15)
+## Latest Updates (2024-03-21)
+
+### Bug Fixes & Improvements
+- ✅ **Fixed Chat API Message Formatting**
+  - Resolved "Cannot read properties of undefined (reading 'length')" error
+  - Improved message sanitization to handle multiple formats:
+    - Direct string messages
+    - Array of content objects
+    - Single content object
+    - Objects with content property
+  - Added proper TypeScript type annotations
+  - Enhanced error handling and string conversion
+
+- ✅ **Fixed Model Selection**
+  - Ensured proper model fallback to 'openai'
+  - Added model preference override from agent settings
+  - Improved model selection dropdown functionality
+
+### Authentication & User Management
+- ✅ **Fixed User Profile Creation**
+  - Resolved UUID type mismatch in user_profiles table
+  - Added proper RLS policies for user profile access
+  - Implemented automatic profile creation for new users
+  - Fixed session management and authentication flow
 
 ### Model Providers
 - ✅ **Restored all Pollinations models**, including:
@@ -65,6 +88,8 @@
 - 🔲 Add unit tests for prompt functionality
 - 🔲 Enhance prompt suggestions based on context
 - 🔲 Implement prompt sharing functionality
+- 🔲 Add comprehensive error logging
+- 🔲 Implement retry mechanism for failed API calls
 
 ## Previous Updates
 

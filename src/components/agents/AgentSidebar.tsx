@@ -121,7 +121,6 @@ export function AgentSidebar() {
     toast({
       title: `Agent Selected: ${agent.name}`,
       description: "This agent will now respond to your messages using its specific instructions and model preferences",
-      duration: 5000
     });
     
     // Add session storage marker so we know this agent was selected during this session
@@ -228,7 +227,6 @@ export function AgentSidebar() {
                               description: checked 
                                 ? `${agent.name} will now speak its responses using the ${useSettingsStore.getState().activeVoice} voice.` 
                                 : `${agent.name} will no longer speak its responses.`,
-                              duration: 3000
                             });
                           }}
                         >
@@ -268,41 +266,44 @@ export function AgentSidebar() {
                                              "Default";
                           
                           toast({
-                            title: "Current model: " + currentModel,
-                            description: (
-                              <div className="mt-2 grid grid-cols-2 gap-2">
-                                {["llama", "mistral", "gemini", "openai"].map(model => (
-                                  <button 
-                                    key={model}
-                                    className={`text-xs px-2 py-1 rounded-sm ${
-                                      currentModel === model ? 'bg-primary text-primary-foreground' : 'bg-secondary hover:bg-secondary/80'
-                                    }`}
-                                    onClick={() => {
-                                      // Update agent model preference
-                                      const updatedAgent = {...agent};
-                                      if (!updatedAgent.modelPreferences) {
-                                        updatedAgent.modelPreferences = {};
-                                      }
-                                      updatedAgent.modelPreferences.textModel = model;
-                                      
-                                      // Update in settings store
-                                      setActiveAgent(updatedAgent);
-                                      
-                                      // Show confirmation
-                                      toast({
-                                        title: `Model updated`,
-                                        description: `${agent.name} will now use ${model}`,
-                                        duration: 3000
-                                      });
-                                    }}
-                                  >
-                                    {model}
-                                  </button>
-                                ))}
-                              </div>
-                            ),
-                            duration: 10000
+                            title: "Current model: " + currentModel
                           });
+
+                          // Then in a separate call, show the model selection UI
+                          const ModelSelectionUI = () => (
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              {["llama", "mistral", "gemini", "openai"].map(model => (
+                                <button 
+                                  key={model}
+                                  className={`text-xs px-2 py-1 rounded-sm ${
+                                    currentModel === model ? 'bg-primary text-primary-foreground' : 'bg-secondary hover:bg-secondary/80'
+                                  }`}
+                                  onClick={() => {
+                                    // Update agent model preference
+                                    const updatedAgent = {...agent};
+                                    if (!updatedAgent.modelPreferences) {
+                                      updatedAgent.modelPreferences = {};
+                                    }
+                                    updatedAgent.modelPreferences.textModel = model;
+                                    
+                                    // Update in settings store
+                                    setActiveAgent(updatedAgent);
+                                    
+                                    // Show confirmation
+                                    toast({
+                                      title: `Model updated`,
+                                      description: `${agent.name} will now use ${model}`
+                                    });
+                                  }}
+                                >
+                                  {model}
+                                </button>
+                              ))}
+                            </div>
+                          );
+
+                          // Then display this component
+                          setModelSelectionUI(<ModelSelectionUI />);
                         }}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">

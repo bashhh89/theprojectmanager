@@ -10,6 +10,7 @@ import type { LucideIcon } from 'lucide-react'
 import React from 'react'
 import { useAuth } from "@/context/AuthContext"
 import { useSidebarStore } from "@/components/ClientLayout"
+import { FiSettings, FiShield, FiLogOut } from 'react-icons/fi'
 
 // Define static model options to avoid dependency on AVAILABLE_MODELS
 const VOICE_OPTIONS = [
@@ -111,7 +112,7 @@ export default function Sidebar() {
   if (!mounted || !user) {
     return (
       <aside className="fixed inset-y-0 left-0 z-50 w-16 overflow-hidden">
-        <div className="h-full bg-background border-r border-border" />
+        <div className="h-full bg-zinc-900 border-r border-zinc-700/50" />
       </aside>
     )
   }
@@ -143,6 +144,12 @@ export default function Sidebar() {
       name: "Presentations",
       path: "/tools/presentation-generator",
       icon: Presentation,
+      submenu: [
+        {
+          name: "My Presentations",
+          path: "/my-presentations",
+        }
+      ]
     },
     {
       name: "Brand",
@@ -182,6 +189,21 @@ export default function Sidebar() {
           path: "/text-to-speech",
         }
       ],
+    },
+    {
+      name: "Settings",
+      path: "/settings",
+      icon: FiSettings,
+    },
+    {
+      name: "Admin",
+      path: "/admin",
+      icon: FiShield,
+    },
+    {
+      name: "Logout",
+      path: "/logout",
+      icon: FiLogOut,
     },
   ]
 
@@ -334,7 +356,7 @@ export default function Sidebar() {
   if (!mounted) {
     return (
       <aside className="fixed inset-y-0 left-0 z-50 w-16 overflow-hidden">
-        <div className="h-full bg-background border-r border-border" />
+        <div className="h-full bg-zinc-900 border-r border-zinc-700/50" />
       </aside>
     )
   }
@@ -343,14 +365,14 @@ export default function Sidebar() {
     <aside className="fixed inset-y-0 left-0 z-50 overflow-hidden">
       {/* Single container with width transition */}
       <div 
-        className={`h-full bg-background border-r border-border transition-all duration-200 ease-in-out overflow-hidden ${
+        className={`h-full bg-zinc-900 border-r border-zinc-700/50 transition-all duration-200 ease-in-out overflow-hidden ${
           isExpanded ? 'w-56' : 'w-16'
         }`}
       >
         {/* Toggle Button */}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="absolute right-0 top-4 z-50 bg-background border border-border rounded-full p-1 hover:bg-muted transform translate-x-1/2"
+          className="absolute right-0 top-4 z-50 bg-zinc-800 border border-zinc-700 rounded-full p-1 hover:bg-zinc-700 transform translate-x-1/2 text-zinc-300"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -369,11 +391,11 @@ export default function Sidebar() {
         {/* Logo */}
         <div className="p-4">
           <div className="flex items-center">
-            <div className="w-6 h-6 bg-primary rounded flex items-center justify-center text-primary-foreground font-bold text-sm">
+            <div className="w-6 h-6 bg-blue-600 rounded flex items-center justify-center text-white font-bold text-sm">
               Q
             </div>
             {isExpanded && (
-              <span className="ml-2 text-lg font-semibold whitespace-nowrap">QanDuAI</span>
+              <span className="ml-2 text-lg font-semibold whitespace-nowrap text-zinc-100">QanDuAI</span>
             )}
           </div>
         </div>
@@ -381,11 +403,12 @@ export default function Sidebar() {
         {/* Navigation */}
         <nav className="flex-1 px-2 py-3 space-y-1">
           {navItems.map((item) => (
-            <div key={item.path} className="relative group">
+            <React.Fragment key={item.path}>
               <button
                 onClick={() => router.push(item.path)}
                 className={`w-full flex items-center ${isExpanded ? 'space-x-2' : 'justify-center'} px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  isActive(item.path) ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  (pathname.startsWith(item.path) || item.submenu?.some(sub => pathname === sub.path))
+                   ? 'bg-blue-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
                 }`}
               >
                 {React.createElement(item.icon, { className: "h-4 w-4 flex-shrink-0" })}
@@ -402,31 +425,31 @@ export default function Sidebar() {
               </button>
               
               {isExpanded && item.submenu && (
-                <div className="absolute left-full top-0 ml-1 w-40 rounded-md shadow-lg bg-card border border-border opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity duration-200 z-50">
-                  <div className="py-1 rounded-md">
+                (pathname.startsWith(item.path) || item.submenu?.some(sub => pathname === sub.path)) && (
+                  <div className="ml-6 mt-1 space-y-1 border-l border-zinc-700/50 pl-3">
                     {item.submenu.map((subitem) => (
                       <button
                         key={subitem.path}
                         onClick={() => router.push(subitem.path)}
-                        className={`block w-full text-left px-3 py-1.5 text-sm ${
-                          isActive(subitem.path) ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'
+                        className={`w-full flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors ${
+                          isActive(subitem.path) ? 'bg-zinc-800 text-zinc-100 font-semibold' : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300'
                         }`}
                       >
-                        {subitem.name}
+                        <span>{subitem.name}</span>
                       </button>
                     ))}
                   </div>
-                </div>
+                )
               )}
-            </div>
+            </React.Fragment>
           ))}
         </nav>
 
         {/* New Chat Button */}
-        <div className="px-2 py-3 border-t border-border">
+        <div className="px-2 py-3 border-t border-zinc-700/50">
           <button
             onClick={handleNewChat}
-            className={`w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm`}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-500 transition-colors text-sm`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 5v14M5 12h14"/>
@@ -438,13 +461,13 @@ export default function Sidebar() {
         {isExpanded && (
           <>
             {/* User Section */}
-            <div className="px-2 py-3 border-t border-border">
+            <div className="px-2 py-3 border-t border-zinc-700/50">
               <button
                 onClick={() => router.push('/account')}
-                className="w-full flex items-center justify-between px-3 py-1.5 rounded-md hover:bg-muted cursor-pointer"
+                className="w-full flex items-center justify-between px-3 py-1.5 rounded-md hover:bg-zinc-800 cursor-pointer text-zinc-300"
               >
                 <div className="flex items-center space-x-2">
-                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
+                  <div className="w-6 h-6 rounded-full bg-zinc-800 flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
                       <circle cx="12" cy="7" r="4"/>

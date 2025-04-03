@@ -27,15 +27,38 @@ export type MCPDirective = {
 // Available models for use with Pollinations API
 export const AVAILABLE_MODELS = {
   TEXT: [
-    { id: 'openai', name: 'OpenAI GPT-4', type: 'chat', censored: true, description: 'OpenAI GPT-4o-mini', vision: true },
-    { id: 'openai-large', name: 'OpenAI GPT-4 Large', type: 'chat', censored: true, description: 'OpenAI GPT-4o', vision: true },
-    { id: 'openai-reasoning', name: 'OpenAI Reasoning', type: 'chat', censored: true, description: 'OpenAI o3-mini', reasoning: true },
-    { id: 'qwen-coder', name: 'Qwen 2.5 Coder', type: 'chat', censored: true, description: 'Qwen 2.5 Coder 32B' },
-    { id: 'llama', name: 'Llama 3.3 70B', type: 'chat', censored: false },
-    { id: 'mistral', name: 'Mistral Small 3.1', type: 'chat', censored: false, vision: true },
-    { id: 'deepseek', name: 'DeepSeek-V3', type: 'chat', censored: true },
-    { id: 'gemini', name: 'Gemini 2.0 Flash', type: 'chat', censored: true, provider: 'google' },
-    { id: 'gemini-thinking', name: 'Gemini 2.0 Flash Thinking', type: 'chat', censored: true, provider: 'google' }
+    { id: 'openai', name: 'OpenAI GPT-4o-mini', type: 'chat', censored: true, description: 'OpenAI GPT-4o-mini', baseModel: true, vision: true },
+    { id: 'openai-large', name: 'OpenAI GPT-4o', type: 'chat', censored: true, description: 'OpenAI GPT-4o', baseModel: true, vision: true },
+    { id: 'openai-reasoning', name: 'OpenAI o3-mini', type: 'chat', censored: true, description: 'OpenAI o3-mini', baseModel: true, reasoning: true },
+    { id: 'qwen-coder', name: 'Qwen 2.5 Coder 32B', type: 'chat', censored: true, description: 'Qwen 2.5 Coder 32B', baseModel: true },
+    { id: 'llama', name: 'Llama 3.3 70B', type: 'chat', censored: false, description: 'Llama 3.3 70B', baseModel: true },
+    { id: 'mistral', name: 'Mistral Small 3.1 2503', type: 'chat', censored: false, description: 'Mistral Small 3.1 2503', baseModel: true, vision: true },
+    { id: 'mistral-roblox', name: 'Mistral Roblox', type: 'chat', censored: false, description: 'Mistral Roblox on Scaleway', baseModel: true },
+    { id: 'roblox-rp', name: 'Roblox Roleplay Assistant', type: 'chat', censored: true, description: 'Roblox Roleplay Assistant', baseModel: true },
+    { id: 'unity', name: 'Unity Mistral Large', type: 'chat', censored: false, description: 'Unity with Mistral Large by Unity AI Lab', baseModel: false },
+    { id: 'midijourney', name: 'Midijourney', type: 'chat', censored: true, description: 'Midijourney musical transformer', baseModel: false },
+    { id: 'rtist', name: 'Rtist', type: 'chat', censored: true, description: 'Rtist image generator by @bqrio', baseModel: false },
+    { id: 'searchgpt', name: 'SearchGPT', type: 'chat', censored: true, description: 'SearchGPT with realtime news and web search', baseModel: false },
+    { id: 'evil', name: 'Evil', type: 'chat', censored: false, description: 'Evil Mode - Experimental', baseModel: false },
+    { id: 'deepseek', name: 'DeepSeek-V3', type: 'chat', censored: true, description: 'DeepSeek-V3', baseModel: true },
+    { id: 'deepseek-r1', name: 'DeepSeek-R1 Distill', type: 'chat', censored: true, description: 'DeepSeek-R1 Distill Qwen 32B', baseModel: true, reasoning: true, provider: 'cloudflare' },
+    { id: 'deepseek-reasoner', name: 'DeepSeek R1 - Full', type: 'chat', censored: true, description: 'DeepSeek R1 - Full', baseModel: true, reasoning: true, provider: 'deepseek' },
+    { id: 'deepseek-r1-llama', name: 'DeepSeek R1 - Llama 70B', type: 'chat', censored: true, description: 'DeepSeek R1 - Llama 70B', baseModel: true, reasoning: true, provider: 'scaleway' },
+    { id: 'qwen-reasoning', name: 'Qwen QWQ 32B', type: 'chat', censored: true, description: 'Qwen QWQ 32B - Advanced Reasoning', baseModel: true, reasoning: true, provider: 'groq' },
+    { id: 'llamalight', name: 'Llama 3.1 8B Instruct', type: 'chat', censored: false, description: 'Llama 3.1 8B Instruct', baseModel: true, maxTokens: 7168 },
+    { id: 'llamaguard', name: 'Llamaguard 7B AWQ', type: 'safety', censored: false, description: 'Llamaguard 7B AWQ', baseModel: false, provider: 'cloudflare', maxTokens: 4000 },
+    { id: 'phi', name: 'Phi-4 Instruct', type: 'chat', censored: true, description: 'Phi-4 Instruct', baseModel: true, provider: 'cloudflare' },
+    { id: 'phi-mini', name: 'Phi-4 Mini Instruct', type: 'chat', censored: true, description: 'Phi-4 Mini Instruct', baseModel: true, provider: 'azure' },
+    { id: 'llama-vision', name: 'Llama 3.2 11B Vision', type: 'chat', censored: false, description: 'Llama 3.2 11B Vision', baseModel: true, provider: 'cloudflare', vision: true },
+    { id: 'pixtral', name: 'Pixtral 12B', type: 'chat', censored: false, description: 'Pixtral 12B', baseModel: true, provider: 'scaleway', vision: true },
+    { id: 'gemini', name: 'Gemini 2.0 Flash', type: 'chat', censored: true, description: 'Gemini 2.0 Flash', baseModel: true, provider: 'google' },
+    { id: 'gemini-thinking', name: 'Gemini 2.0 Flash Thinking', type: 'chat', censored: true, description: 'Gemini 2.0 Flash Thinking', baseModel: true, provider: 'google' },
+    { id: 'hormoz', name: 'Hormoz 8b', type: 'chat', description: 'Hormoz 8b by Muhammadreza Haghiri', baseModel: true, provider: 'modal' },
+    { id: 'hypnosis-tracy', name: 'Hypnosis Tracy 7B', type: 'chat', description: 'Hypnosis Tracy 7B - Self-help AI assistant', baseModel: false, provider: 'openai' },
+    { id: 'sur', name: 'Sur AI Assistant', type: 'chat', censored: true, description: 'Sur AI Assistant', baseModel: false },
+    { id: 'sur-mistral', name: 'Sur AI Assistant (Mistral)', type: 'chat', censored: true, description: 'Sur AI Assistant (Mistral)', baseModel: false },
+    { id: 'llama-scaleway', name: 'Llama (Scaleway)', type: 'chat', censored: false, description: 'Llama (Scaleway)', baseModel: true },
+    { id: 'openai-audio', name: 'OpenAI GPT-4o Audio', type: 'chat', censored: true, description: 'OpenAI GPT-4o-audio-preview', baseModel: true, audio: true, voices: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'coral', 'verse', 'ballad', 'ash', 'sage', 'amuch', 'dan'] }
   ],
   IMAGE: [
     { id: 'flux', name: 'Flux' },
@@ -47,12 +70,8 @@ export const AVAILABLE_MODELS = {
 const POLLINATIONS_API_BASE_URL = 'https://text.pollinations.ai';
 
 /**
- * Call the Pollinations API for chat completion
- * @param messages - Array of message objects with role and content
- * @param model - Model ID to use for completion
- * @param systemPrompt - Optional system prompt
- * @param stream - Whether to stream the response
- * @returns Response from the API
+ * Call the Pollinations API for chat completion (or simple text gen)
+ * Uses the OpenAI-compatible POST endpoint for chat
  */
 export async function callPollinationsChat(
   messages: Array<{ role: string; content: string }>,
@@ -61,55 +80,98 @@ export async function callPollinationsChat(
   stream = false
 ) {
   try {
-    // For single message simple requests
-    if (messages.length === 1 && messages[0].role === 'user') {
+    // --- Keep GET logic for simple, single-message prompts --- 
+    if (messages.length === 1 && messages[0].role === 'user' && !systemPrompt && !stream) {
       const prompt = encodeURIComponent(messages[0].content);
-      const systemParam = systemPrompt ? `&system=${encodeURIComponent(systemPrompt)}` : '';
-      const url = `${POLLINATIONS_API_BASE_URL}/${prompt}?model=${model}${systemParam}`;
+      const url = `${POLLINATIONS_API_BASE_URL}/${prompt}?model=${model}`;
+      console.log("Using simple GET request for single prompt:", url);
       
       const response = await fetch(url);
-      return response.text();
+      if (!response.ok) {
+         const errorText = await response.text();
+         console.error("Simple GET request failed:", response.status, errorText);
+         throw new Error(`Simple request failed with status ${response.status}: ${errorText.substring(0,100)}`);
+      }
+      return response.text(); // Returns plain text for simple GET
     }
     
-    // For conversation with multiple messages
-    const response = await fetch(`${POLLINATIONS_API_BASE_URL}/chat`, {
+    // --- Use OpenAI-compatible POST endpoint for conversations or complex requests ---
+    console.log("Using POST request (OpenAI compatible endpoint) for chat/complex request");
+    const response = await fetch(`${POLLINATIONS_API_BASE_URL}/openai`, { // Corrected endpoint
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        model,
         messages: systemPrompt 
           ? [{ role: 'system', content: systemPrompt }, ...messages]
           : messages,
-        model,
         stream
       })
     });
-    
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("POST request failed:", response.status, errorText);
+      throw new Error(`API request failed with status ${response.status}: ${errorText.substring(0,100)}`);
+    }
+
     if (stream) {
+      console.log("Returning stream body");
       return response.body;
     }
     
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch (e) {
-      // If not valid JSON, return the text directly
-      return { message: { content: text } };
-    }
-  } catch (error) {
-    console.error('Error calling Pollinations API:', error);
-    throw error;
+    console.log("Attempting to parse JSON response from POST");
+    const responseData = await response.json(); 
+    console.log("POST request successful, returning parsed JSON:", responseData);
+    return responseData; // Return parsed JSON for standard POST
+
+  } catch (error: any) {
+    console.error('Error calling Pollinations API:', error.message);
+    // Re-throw the error so the calling function (handleSubmit) can catch it
+    throw error; 
   }
 }
 
 /**
- * Generate audio from text using Pollinations API
+ * Generate audio URL from text using Pollinations API
  * @param text - Text to convert to speech
  * @param voice - Voice ID to use
  * @returns URL to the generated audio
  */
 export function generateAudioUrl(text: string, voice = 'alloy') {
   const encodedText = encodeURIComponent(text);
-  return `${POLLINATIONS_API_BASE_URL}/audio?text=${encodedText}&model=openai-audio&voice=${voice}&t=${Date.now()}`;
+  return `${POLLINATIONS_API_BASE_URL}/${encodedText}?model=openai-audio&voice=${voice}&t=${Date.now()}`;
+}
+
+/**
+ * Generate audio using Pollinations API and return a playable URL
+ * @param text - Text to convert to speech
+ * @param voice - Voice ID to use (e.g., 'nova', 'alloy', 'echo')
+ * @param exact - If true, will read the exact text. If false, will generate a response about the text.
+ * @returns Promise resolving to the URL of the generated audio or null if failed
+ */
+export async function generatePollinationsAudio(text: string, voice: string = 'nova', exact: boolean = true): Promise<string | null> {
+  try {
+    console.log(`Generating Pollinations audio with voice: ${voice}, exact mode: ${exact}`);
+    
+    // For exact repetition, we need to use the right format to prevent it from responding
+    // instead of repeating the exact content
+    const promptText = exact 
+      ? `Read the following text verbatim without additional commentary: ${text.substring(0, 3900)}` 
+      : `Give a natural conversational response about: ${text.substring(0, 3800)}`;
+    
+    // Create the URL with proper encoding
+    const encodedText = encodeURIComponent(promptText);
+    const audioUrl = `https://text.pollinations.ai/${encodedText}?model=openai-audio&voice=${voice}`;
+    
+    console.log("Requesting audio from:", audioUrl);
+    console.log("Audio mode:", exact ? "Exact repetition" : "Normal response");
+    
+    return audioUrl;
+  } catch (error) {
+    console.error('Error generating audio:', error);
+    return null;
+  }
 }
 
 /**
@@ -551,11 +613,43 @@ export async function generatePollinationsResponse(prompt: string, model: string
     });
 
     if (!response.ok) {
-      throw new Error('Failed to generate response');
+      const errorText = await response.text();
+      console.error(`Pollinations API error (${response.status}): ${errorText}`);
+      
+      // Handle specific error types
+      if (errorText.includes("Cannot read properties of undefined") && errorText.includes("reading 'length'")) {
+        throw new Error("The Pollinations API returned invalid data. This may be a temporary issue. Please try again with a different model.");
+      }
+      
+      throw new Error(`Failed to generate response: ${errorText}`);
     }
 
-    const data = await response.json();
+    // Try to parse the response as text first to check for errors
+    const rawText = await response.text();
+    
+    try {
+      const data = JSON.parse(rawText);
+      
+      // Safely access the data
+      if (data && data.choices && data.choices.length > 0 && data.choices[0].message && data.choices[0].message.content) {
     return data.choices[0].message.content;
+      } else {
+        console.warn("Unexpected response structure from Pollinations API:", rawText.substring(0, 200));
+        if (typeof data === "string") {
+          return data;
+        } else if (typeof data.text === "string") {
+          return data.text; 
+        } else if (typeof data.message === "string") {
+          return data.message;
+        } else {
+          return "The AI model returned an unexpected response format.";
+        }
+      }
+    } catch (e) {
+      // If parsing fails, return the raw text
+      console.error("Failed to parse JSON response:", e);
+      return rawText;
+    }
   } catch (error) {
     console.error('Pollinations API error:', error);
     throw error;

@@ -1,25 +1,17 @@
-import "@/app/globals.css"
+import { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import { Metadata, Viewport } from "next"
+import './globals.css'
 import ClientLayout from '@/components/ClientLayout'
-import { Toaster } from 'sonner'
-
-const inter = Inter({ subsets: ['latin'] })
+import React from 'react'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { Toaster } from '@/components/ui/toast'
 
 export const metadata: Metadata = {
-  title: "QanDuAI - Content & Business Platform",
-  description: "AI-Powered Content & Business Platform",
-  icons: {
-    icon: "/favicon.ico",
-  },
+  title: 'QanDu AI',
+  description: 'Quantum Dimensional Understanding - Your all-in-one AI assistant platform',
 }
 
-export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "white" },
-    { media: "(prefers-color-scheme: dark)", color: "black" },
-  ],
-}
+const inter = Inter({ subsets: ['latin'] })
 
 export default function RootLayout({
   children,
@@ -27,12 +19,14 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <ClientLayout>
-          {children}
-          <Toaster richColors position="top-right" />
-        </ClientLayout>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${inter.className} bg-zinc-900`} suppressHydrationWarning>
+        <ErrorBoundary>
+          <ClientLayout>
+            {children}
+          </ClientLayout>
+        </ErrorBoundary>
+        <Toaster />
       </body>
     </html>
   )

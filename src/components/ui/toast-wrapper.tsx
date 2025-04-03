@@ -1,32 +1,36 @@
 'use client';
 
 import React from 'react';
-import toast, { Toaster as HotToaster } from 'react-hot-toast';
+import { toast } from './use-toast';
 
-// Wrapper component to provide Toaster in client components
-export function Toaster() {
-  return (
-    <HotToaster
-      position="top-right"
-      toastOptions={{
-        duration: 3000,
-        style: {
-          background: 'var(--background)',
-          color: 'var(--foreground)',
-          border: '1px solid var(--border)',
-        },
-      }}
-    />
-  );
-}
-
-// Type-safe toast functions that fix the props issues
-export const toasts = {
-  success: (message: string) => toast.success(message),
-  error: (message: string) => toast.error(message),
-  loading: (message: string) => toast.loading(message),
-  custom: (message: string) => toast(message),
-  dismiss: (toastId?: string) => toast.dismiss(toastId),
+// Standardized toast function that provides consistent behavior across the app
+export const showToast = ({ 
+  title,
+  description, 
+  variant = "default",
+  duration = 5000
+}: { 
+  title: string;
+  description?: string;
+  variant?: "default" | "destructive";
+  duration?: number;
+}) => {
+  return toast({
+    title,
+    description,
+    variant,
+    duration
+  });
 };
 
-export default toast; 
+// Create a toasts object with convenience methods
+export const toasts = {
+  success: (message: string, description?: string) => 
+    showToast({ title: message, description, variant: "default", duration: 5000 }),
+    
+  error: (message: string, description?: string) =>
+    showToast({ title: message, description, variant: "destructive", duration: 5000 })
+};
+
+// Export the original toast function as well for backward compatibility
+export { toast } from './use-toast'; 

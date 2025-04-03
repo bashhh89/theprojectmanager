@@ -8,7 +8,7 @@ const defaultAgent = {
   systemPrompt: "You are a helpful AI assistant.",
   system_prompt: "You are a helpful AI assistant.",
   modelPreferences: {
-    textModel: "google-gemini-pro",
+    textModel: "openai",
     imageModel: "flux",
     voiceModel: "alloy"
   }
@@ -51,6 +51,8 @@ interface SettingsState {
   setSelectedAgentId: (id: string | null) => void
   agentSpokenResponses: boolean
   setAgentSpokenResponses: (enabled: boolean) => void
+  autoPlayAfterVoiceInput: boolean
+  setAutoPlayAfterVoiceInput: (enabled: boolean) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -60,13 +62,13 @@ export const useSettingsStore = create<SettingsState>()(
       setDarkMode: (darkMode) => set({ darkMode }),
       
       // Initialize with default values
-      activeTextModel: "google-gemini-pro",
+      activeTextModel: "openai",
       setActiveTextModel: (model) => set({ activeTextModel: model }),
       
       activeImageModel: "flux",
       setActiveImageModel: (model) => set({ activeImageModel: model }),
       
-      activeVoice: "alloy",
+      activeVoice: "nova",
       setActiveVoice: (voice) => set({ activeVoice: voice }),
       
       activeAgent: defaultAgent,
@@ -140,6 +142,9 @@ export const useSettingsStore = create<SettingsState>()(
       
       agentSpokenResponses: false,
       setAgentSpokenResponses: (enabled) => set({ agentSpokenResponses: enabled }),
+      
+      autoPlayAfterVoiceInput: true,
+      setAutoPlayAfterVoiceInput: (enabled) => set({ autoPlayAfterVoiceInput: enabled }),
     }),
     {
       name: 'settings-storage',

@@ -617,6 +617,27 @@ The integration supports the following document types:
 - Batch document processing
 - Document versioning and history
 
+## My Presentations Feature (Implemented April 2024 - Partially)
+
+This feature allows users to manage presentations created with the AI Presentation Generator.
+
+### Current Status:
+- **Backend APIs:** 
+  - `POST /api/save-presentation`: Implemented and working.
+  - `GET /api/presentations`: Implemented and working (fetches list for user).
+  - `DELETE /api/presentations/[id]`: Implemented and working.
+  - `GET /api/presentations/[id]`: Implemented (fetches single presentation).
+- **Frontend Page (`/my-presentations`):** 
+  - Created and displays the list of saved presentations.
+  - Delete button implemented and working.
+  - Download Data (JSON) button implemented and working.
+  - Link added to sidebar under "Presentations".
+- **View Presentation Page (`/presentations/[id]`):**
+  - Created the page structure.
+  - **Issue:** Currently encountering a 500 Server Error when the page tries to fetch presentation data via `GET /api/presentations/[id]`. 
+  - **Priority:** High - Needs investigation (paused temporarily to focus on chat UI redesign).
+- **Download PDF:** Functionality not yet implemented (placeholder button exists).
+
 ---
 
 *Last updated: March 28, 2025*

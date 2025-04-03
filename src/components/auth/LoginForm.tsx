@@ -47,15 +47,15 @@ export default function LoginForm() {
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <div className="bg-gradient-to-tr from-blue-900/50 to-purple-900/50 backdrop-blur-lg rounded-2xl border border-white/10 shadow-xl p-8 space-y-6">
+      <div className="bg-zinc-800 backdrop-blur-lg rounded-xl border border-zinc-700 shadow-xl p-8 space-y-6">
         <div className="text-center mb-8">
-          <div className="h-16 w-16 mx-auto bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center mb-4">
+          <div className="h-16 w-16 mx-auto bg-gradient-to-r from-zinc-600 to-zinc-800 rounded-full flex items-center justify-center mb-4 border border-zinc-600">
             <LogInIcon className="text-white h-8 w-8" />
           </div>
-          <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+          <h2 className="text-2xl font-bold text-white">
             Welcome Back
           </h2>
-          <p className="text-gray-400 mt-2 text-sm">
+          <p className="text-zinc-400 mt-2 text-sm">
             Sign in to access your projects and agents
           </p>
         </div>
@@ -73,12 +73,12 @@ export default function LoginForm() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300">
+            <label htmlFor="email" className="block text-sm font-medium text-zinc-300">
               Email Address
           </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <MailIcon className="h-5 w-5 text-gray-400" />
+                <MailIcon className="h-5 w-5 text-zinc-400" />
               </div>
           <input
             id="email"
@@ -88,19 +88,19 @@ export default function LoginForm() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-                className="block w-full pl-10 pr-3 py-3 bg-black/30 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
+                className="block w-full pl-10 pr-3 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
                 placeholder="name@example.com"
           />
             </div>
         </div>
 
           <div className="space-y-2">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+            <label htmlFor="password" className="block text-sm font-medium text-zinc-300">
             Password
           </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <KeyIcon className="h-5 w-5 text-gray-400" />
+                <KeyIcon className="h-5 w-5 text-zinc-400" />
               </div>
           <input
             id="password"
@@ -110,7 +110,7 @@ export default function LoginForm() {
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-10 pr-10 py-3 bg-black/30 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
+                className="block w-full pl-10 pr-10 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
             placeholder="••••••••"
           />
               <button
@@ -119,12 +119,13 @@ export default function LoginForm() {
                 onClick={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? (
-                  <EyeOffIcon className="h-5 w-5 text-gray-400 hover:text-gray-300" />
+                  <EyeOffIcon className="h-5 w-5 text-zinc-400 hover:text-zinc-300" />
                 ) : (
-                  <EyeIcon className="h-5 w-5 text-gray-400 hover:text-gray-300" />
+                  <EyeIcon className="h-5 w-5 text-zinc-400 hover:text-zinc-300" />
                 )}
               </button>
             </div>
+            {/* Restore Forgot Password link */}
             <div className="flex justify-end">
               <a href="/forgot-password" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
                 Forgot password?
@@ -135,7 +136,7 @@ export default function LoginForm() {
         <button
           type="submit"
           disabled={isLoading}
-            className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all duration-200 shadow-lg shadow-blue-700/20"
+            className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-zinc-800 disabled:opacity-50 transition-all duration-200"
           >
             {isLoading ? (
               <>
@@ -156,20 +157,21 @@ export default function LoginForm() {
 
         <div className="relative py-3">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-700"></div>
+            <div className="w-full border-t border-zinc-700"></div>
           </div>
           <div className="relative flex justify-center">
-            <span className="px-2 bg-gradient-to-tr from-blue-900/50 to-purple-900/50 text-xs text-gray-400">Or continue with</span>
+            <span className="px-2 bg-zinc-800 text-xs text-zinc-400">Or continue with</span>
           </div>
         </div>
 
+        {/* Restore social login buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
-            className="flex items-center justify-center py-2.5 px-4 border border-gray-700 rounded-lg hover:bg-gray-800/50 transition-colors"
+            className="flex items-center justify-center py-2.5 px-4 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors"
           >
-            <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-              <path
+            <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24"> 
+               <path
                 fill="#EA4335"
                 d="M5.26620003,9.76452941 C6.19878754,6.93863203 8.85444915,4.90909091 12,4.90909091 C13.6909091,4.90909091 15.2181818,5.50909091 16.4181818,6.49090909 L19.9090909,3 C17.7818182,1.14545455 15.0545455,0 12,0 C7.27006974,0 3.1977497,2.69829785 1.23999023,6.65002441 L5.26620003,9.76452941 Z"
               />
@@ -190,20 +192,20 @@ export default function LoginForm() {
           </button>
           <button
             type="button"
-            className="flex items-center justify-center py-2.5 px-4 border border-gray-700 rounded-lg hover:bg-gray-800/50 transition-colors"
+            className="flex items-center justify-center py-2.5 px-4 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors"
           >
-            <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-              <path
+             <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+               <path
                 fill="currentColor"
                 d="M22.675 0h-21.35c-.732 0-1.325.593-1.325 1.325v21.351c0 .731.593 1.324 1.325 1.324h11.495v-9.294h-3.128v-3.622h3.128v-2.671c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12v9.293h6.116c.73 0 1.323-.593 1.323-1.325v-21.35c0-.732-.593-1.325-1.325-1.325z"
               />
-            </svg>
+             </svg>
             Facebook
           </button>
         </div>
 
         <div className="text-center text-sm mt-4">
-          <span className="text-gray-400">Don't have an account? </span>
+          <span className="text-zinc-400">Don't have an account? </span>
           <a href="/register" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
             Create Account
           </a>

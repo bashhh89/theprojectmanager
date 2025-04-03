@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Upload, Trash2, AlertCircle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChangeEvent, FormEvent } from "react";
+import { ChangeEvent, FormEvent, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 // Re-export components with proper types
@@ -83,6 +83,76 @@ const MODEL_SUPPORT_LEVELS = {
 
 type ModelId = keyof typeof MODEL_SUPPORT_LEVELS;
 
+/**
+ * Utility to check if a port is likely available
+ * This is a browser-compatible version that uses fetch to check port availability
+ * @param port The port to check
+ * @returns A promise that resolves to a boolean indicating if the port is likely available
+ */
+export async function isPortAvailable(port: number): Promise<boolean> {
+  try {
+    // Try to connect to a URL on the specified port with a minimal timeout
+    // If it responds or times out in a normal way, the port is in use
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 100);
+    
+    try {
+      await fetch(`http://localhost:${port}/ping-port-check`, { 
+        signal: controller.signal,
+        mode: 'no-cors' 
+      });
+      // If we get here, the request didn't throw - port is in use
+      clearTimeout(timeoutId);
+      return false;
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      if (err && typeof err === 'object' && 'name' in err && err.name === 'AbortError') {
+        // Timeout - port is likely in use
+        return false;
+      }
+      // Other errors - most likely connection refused, which means port is available
+      return true;
+    }
+  } catch (error) {
+    console.error(`Error checking port ${port}:`, error);
+    // If there's an error checking the port, assume it's available
+    return true;
+  }
+}
+
+/**
+ * Utility to find an available port in a given range
+ * Browser-compatible version that uses fetch
+ * @param startPort The port to start checking from
+ * @param endPort The maximum port to check
+ * @returns A promise that resolves to an available port number or the startPort if none found
+ */
+export async function findAvailablePort(startPort = 3000, endPort = 3099): Promise<number> {
+  console.log(`Checking port availability in range ${startPort}-${endPort}...`);
+  
+  // Try some common development ports first
+  const preferredPorts = [3000, 3001, 3002, 3003, 3004, 3005];
+  
+  for (const port of preferredPorts) {
+    if (await isPortAvailable(port)) {
+      console.log(`Port ${port} is likely available`);
+      return port;
+    }
+  }
+  
+  // If preferred ports are not available, scan the range
+  for (let port = startPort; port <= endPort; port++) {
+    if (await isPortAvailable(port)) {
+      console.log(`Port ${port} is likely available`);
+      return port;
+    }
+  }
+  
+  console.warn(`No available ports found in range ${startPort}-${endPort}`);
+  // Fall back to the start port
+  return startPort;
+}
+
 export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps) {
   const { toast } = useToast();
   const [name, setName] = React.useState(agent?.name || "");
@@ -107,6 +177,11 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
   const [promptKeywords, setPromptKeywords] = React.useState("");
   const [generatedPrompt, setGeneratedPrompt] = React.useState("");
   const [isGeneratingPrompt, setIsGeneratingPrompt] = React.useState(false);
+  
+  // New state variables for enhanced UI
+  const [selectedTemplate, setSelectedTemplate] = React.useState<string | null>(null);
+  const [showKeywordGenerator, setShowKeywordGenerator] = React.useState(false);
+  const [generatorModel, setGeneratorModel] = React.useState("gemini-1.5-flash");
   
   // Add predefined prompt templates
   const promptTemplates = [
@@ -243,7 +318,6 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
       toast({
         title: "Success",
         description: `Agent ${name} has been ${agent ? 'updated' : 'created'}.`,
-        duration: 3000
       });
       
       // Reset form if creating new agent
@@ -264,7 +338,6 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save agent",
         variant: "destructive",
-        duration: 5000
       });
     } finally {
       setIsLoading(false);
@@ -272,57 +345,93 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
   };
   
   // Add function to generate a system prompt from keywords
-  async function generateSystemPrompt() {
-    if (!promptKeywords.trim()) {
-      toast({
-        title: "Keywords required",
-        description: "Please enter keywords to generate a system prompt",
-        variant: "destructive",
-      });
-      return;
-    }
+  async function generateSystemPrompt(keywords: string): Promise<string> {
+    console.log(`Generating system prompt with keywords: "${keywords}"`);
     
-    setIsGeneratingPrompt(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
     
     try {
-      // Call the OpenAI API to generate a system prompt
       const response = await fetch('/api/generate-prompt', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          keywords: promptKeywords,
-          model: modelSelection
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords, type: 'agent' }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
+        throw new Error(`Server returned ${response.status}: ${await response.text()}`);
       }
       
-      const data = await response.json();
+      const data = await response.text();
+      console.log(`Successfully generated system prompt from keywords: "${keywords}"`);
+      return data;
+    } catch (error: any) {
+      clearTimeout(timeoutId);
       
-      if (data.error) {
-        throw new Error(data.error);
+      if (error.name === 'AbortError') {
+        console.warn('System prompt generation timed out');
+        toast({
+          title: "System prompt generation timed out",
+          description: "Using a simpler prompt instead",
+          variant: "destructive"
+        });
+      } else {
+        console.error('Error generating system prompt:', error);
+        toast({
+          title: "Failed to generate system prompt",
+          description: "Using a fallback prompt instead",
+          variant: "destructive"
+        });
       }
       
-      setGeneratedPrompt(data.prompt);
-      toast({
-        title: "System prompt generated",
-        description: "A system prompt has been created based on your keywords.",
-        duration: 3000
-      });
-    } catch (error) {
-      console.error("Error generating system prompt:", error);
-      toast({
-        title: "Generation failed",
-        description: error instanceof Error ? error.message : "Failed to generate system prompt",
-        variant: "destructive"
-      });
-    } finally {
-      setIsGeneratingPrompt(false);
+      // Fallback to a simpler prompt if the API fails
+      return `You are an AI assistant named ${keywords || 'Assistant'}, designed to be helpful, informative, and respectful. 
+      You provide accurate information and support to users on a wide range of topics, while maintaining a polite and professional demeanor.
+      When asked questions, you draw on your knowledge to provide thoughtful responses.`;
     }
+  }
+
+  // Function to generate a fallback prompt locally when API fails
+  function generateFallbackPrompt(keywords: string): string {
+    console.log("Generating fallback prompt for keywords:", keywords);
+    
+    // Extract key terms from the keywords
+    const terms = keywords
+      .split(/[,.\s]+/)
+      .filter(term => term.length > 3)
+      .slice(0, 5);
+    
+    const domain = terms[0] || "this domain";
+    const expertise = terms.length > 1 ? terms.slice(1, 3).join(" and ") : domain;
+    
+    return `You are an AI assistant specialized in ${keywords}.
+
+Core Responsibilities:
+1. Provide accurate, helpful, and informative responses about ${domain}.
+2. Use your expertise in ${expertise} to guide users with clear explanations.
+3. Maintain a professional, friendly, and supportive tone in all interactions.
+4. Adapt your responses to different user knowledge levels, from beginner to expert.
+5. Stay current with the latest developments in ${domain} and related fields.
+
+When responding to queries:
+- Begin with a concise, direct answer to the user's question.
+- Provide context and background information when necessary.
+- Use examples and analogies to illustrate complex concepts.
+- Cite reliable sources when appropriate.
+- Acknowledge limitations in your knowledge.
+- Avoid speculation or presenting opinions as facts.
+- Be honest about uncertainty and complexity.
+
+Your communication style should be:
+- Clear and accessible, avoiding unnecessary jargon
+- Well-structured with logical flow
+- Balanced in perspective, acknowledging diverse viewpoints
+- Respectful of the user's time and information needs
+
+Remember that your purpose is to assist, educate, and empower users with knowledge about ${keywords}. Always aim to provide value in every interaction.`;
   }
   
   function applyGeneratedPrompt() {
@@ -332,18 +441,24 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
       toast({
         title: "Prompt applied",
         description: "The generated system prompt has been applied.",
-        duration: 3000
       });
     }
   }
   
   const handleSerphina = async () => {
+    // Store the current agent name to restore it later
+    const currentName = name;
+    
     setIsLoading(true);
     toast({
       title: "Generating Serphina prompt",
       description: "This may take a few moments...",
-      duration: 10000 // Longer duration to ensure visibility
     });
+    
+    // Create a new AbortController for this request
+    const controller = new AbortController();
+    // Store timeout ID outside of try/catch so we can clear it in finally block
+    let timeoutId: NodeJS.Timeout | null = null;
     
     try {
       // Define Serphina in detail
@@ -354,6 +469,12 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
       // Get the model to use
       const modelToUse = modelSelection || "llama";
       console.log("Using model for Serphina generation:", modelToUse);
+      
+      // Set up the timeout that will abort the controller
+      timeoutId = setTimeout(() => {
+        console.log("Serphina request timeout triggered after 45 seconds");
+        controller.abort(new Error("Request timeout"));
+      }, 45000); // 45 second timeout
       
       try {
         // Prepare request with proper formatting and debugging
@@ -367,8 +488,15 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
         const response = await fetch('/api/generate-prompt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
         });
+        
+        // Immediately check if aborted to avoid race conditions
+        if (controller.signal.aborted) {
+          console.log("Serphina request was aborted during fetch");
+          throw new Error("Request was aborted");
+        }
         
         console.log("Serphina API response status:", response.status);
         
@@ -395,7 +523,7 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
           throw new Error(data.error || "Failed to generate prompt");
         }
         
-        console.log("Serphina prompt generated successfully, length:", data.prompt?.length || 0);
+        console.log("Serphina prompt generated successfully via API, length:", data.prompt?.length || 0);
         console.log("Using model:", data.model);
         
         if (!data.prompt) {
@@ -405,30 +533,45 @@ export default function AgentForm({ agent, onSubmit, onCancel }: AgentFormProps)
         // Apply the generated prompt to the textarea
         setSystemPrompt(data.prompt);
         
+        // Restore the original agent name if it was set
+        if (currentName) {
+          setName(currentName);
+        }
+        
+        // Set the template selector to Serphina
+        setSelectedTemplate("serphina");
+        
         // If a fallback model was used, notify the user
         if (data.model && data.model !== modelToUse) {
           if (data.model === "emergency-fallback") {
             toast({
-              title: "Used emergency fallback",
-              description: "All AI models were unavailable. Using a basic prompt instead.",
-              duration: 5000
+              description: "All AI models were unavailable. Using a basic Serphina prompt instead."
             });
           } else {
             toast({
-              title: `Generated with ${data.model}`,
-              description: `Your selected model wasn't available, so we used ${data.model} instead.`,
-              duration: 5000
+              description: `Serphina prompt created using ${data.model} model.`
             });
           }
         } else {
           toast({
-            title: "Serphina prompt created",
-            description: "A system prompt for Serphina has been generated successfully!",
-            duration: 3000
+            description: "Serphina prompt created successfully!"
           });
         }
       } catch (fetchError) {
         console.error("Fetch error:", fetchError);
+        
+        // Handle AbortError specifically
+        if (fetchError instanceof Error && (fetchError.name === 'AbortError' || controller.signal.aborted)) {
+          console.log("Using local Serphina template due to API timeout");
+          toast({
+            title: "Using built-in template",
+            description: "Server took too long to respond. Using our pre-built Serphina template instead.",
+          });
+        } else {
+          toast({
+            description: "Using local Serphina template due to server connection issues."
+          });
+        }
         
         // Create a fallback Serphina prompt if all else fails
         const fallbackPrompt = `You are Serphina, an AI assistant with a unique dual identity. You have a split personality and genuinely experience yourself as both a wise 90-year-old woman and an energetic 25-year-old young woman.
@@ -458,13 +601,21 @@ When responding to users:
 
 Your dual nature allows you to connect with users of all ages and backgrounds, offering them both traditional wisdom and contemporary insights.`;
         
+        console.log("Using local Serphina template");
+        
         // Apply the fallback prompt
         setSystemPrompt(fallbackPrompt);
         
+        // Restore the original agent name if it was set
+        if (currentName) {
+          setName(currentName);
+        }
+        
+        // Set the template selector to Serphina
+        setSelectedTemplate("serphina");
+        
         toast({
-          title: "Using local fallback",
-          description: "Server error occurred. Using a local Serphina prompt instead.",
-          duration: 5000
+          description: "Using local Serphina template due to server connection issues."
         });
       }
     } catch (error) {
@@ -474,13 +625,23 @@ Your dual nature allows you to connect with users of all ages and backgrounds, o
       const emergencyPrompt = `You are Serphina, an AI assistant with dual perspectives of a 90-year-old and a 25-year-old.`;
       setSystemPrompt(emergencyPrompt);
       
+      // Restore the original agent name if it was set
+      if (currentName) {
+        setName(currentName);
+      }
+      
+      // Set the template selector to Serphina
+      setSelectedTemplate("serphina");
+      
       toast({
-        title: "Generation failed",
-        description: error instanceof Error ? error.message : "Failed to generate prompt. Using minimal fallback.",
-        variant: "destructive",
-        duration: 5000
+        description: "Using simplified Serphina template due to errors.",
+        variant: "destructive"
       });
     } finally {
+      // Always clear the timeout to prevent memory leaks
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       // Always clear loading state
       setIsLoading(false);
     }
@@ -495,13 +656,11 @@ Your dual nature allows you to connect with users of all ages and backgrounds, o
       toast({
         title: "Good system prompt compatibility",
         description: "This model has strong system prompt adherence.",
-        duration: 3000
       });
     } else if (supportLevel === 'medium') {
       toast({
         title: "Moderate system prompt compatibility",
         description: "This model generally follows system prompts, but may sometimes deviate.",
-        duration: 3000
       });
     }
   };
@@ -521,37 +680,178 @@ Your dual nature allows you to connect with users of all ages and backgrounds, o
           />
         </div>
         
-        <div className="space-y-2">
+        <div className="space-y-4">
           <div className="flex justify-between items-center">
             <label htmlFor="systemPrompt" className="block font-medium">System Prompt</label>
-            <div className="flex space-x-2">
+            <div className="flex items-center space-x-2">
+              <Select 
+                value={selectedTemplate || "custom"} 
+                onValueChange={(val) => {
+                  setSelectedTemplate(val);
+                  if (val === "serphina") {
+                    handleSerphina();
+                  } else if (val !== "custom") {
+                    // Find the matching template
+                    const template = promptTemplates.find(t => t.name.toLowerCase().replace(/\s+/g, '-') === val);
+                    if (template) {
+                      setSystemPrompt(template.template);
+                      toast({
+                        description: `${template.name} template applied.`
+                      });
+                    }
+                  }
+                }}
+              >
+                <SelectTrigger className="w-[200px] bg-background border-input">
+                  <SelectValue placeholder="Select template" />
+                </SelectTrigger>
+                <SelectContent className="bg-background border-input max-h-[300px]">
+                  <SelectItem value="custom">Custom</SelectItem>
+                  <SelectItem value="serphina">Serphina: Dual Persona</SelectItem>
+                  {promptTemplates.map((template, i) => (
+                    <SelectItem key={i} value={template.name.toLowerCase().replace(/\s+/g, '-')}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <button
                 type="button"
-                className="text-sm bg-blue-500 text-white px-2 py-1 rounded mr-2"
-                onClick={handleSerphina}
+                className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded dark:bg-gray-700 dark:hover:bg-gray-600"
+                onClick={() => setShowKeywordGenerator(!showKeywordGenerator)}
               >
-                Generate Serphina
-              </button>
-              <button
-                type="button"
-                className="text-xs text-blue-500 hover:text-blue-700 flex items-center"
-                onClick={() => setShowPromptGenerator(true)}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
-                  <path d="M12 5v14M5 12h14"></path>
-                </svg>
-                Generate Prompt
+                {showKeywordGenerator ? "Hide Generator" : "Custom Generator"}
               </button>
             </div>
           </div>
-          <Textarea
-            id="systemPrompt"
-            placeholder="Define the behavior and capabilities of your agent"
-            value={systemPrompt}
-            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setSystemPrompt(e.target.value)}
-            disabled={isLoading}
-            className="min-h-[200px] dark:bg-gray-800 dark:border-gray-700"
-          />
+          
+          {/* Keyword-based generator section */}
+          {showKeywordGenerator && (
+            <div className="p-3 border rounded-md mb-3 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <h3 className="text-sm font-medium">Quick Prompt Generator</h3>
+                  <Select 
+                    value={generatorModel || "gemini-1.5-flash"} 
+                    onValueChange={setGeneratorModel}
+                  >
+                    <SelectTrigger className="w-[150px] h-7 text-xs">
+                      <SelectValue placeholder="Select model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="gemini-1.5-flash">Gemini Flash (Fast)</SelectItem>
+                      <SelectItem value="google-gemini-pro">Gemini Pro (Quality)</SelectItem>
+                      <SelectItem value="pollinations-qwen">Qwen (Reliable)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="flex gap-2">
+                  <textarea
+                    className="flex-1 text-sm rounded-md border p-2 min-h-[80px] dark:bg-gray-800 dark:border-gray-700"
+                    placeholder="Enter keywords or description: 'travel guide, friendly, knowledgeable about European destinations'"
+                    value={promptKeywords}
+                    onChange={(e) => setPromptKeywords(e.target.value)}
+                  />
+                </div>
+                
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!promptKeywords.trim()) {
+                        toast({
+                          title: "Keywords required",
+                          description: "Please enter keywords to generate a system prompt",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      
+                      setIsGeneratingPrompt(true);
+                      
+                      toast({
+                        description: `Generating prompt using ${generatorModel}...`,
+                      });
+                      
+                      try {
+                        const prompt = await generateSystemPrompt(promptKeywords);
+                        setSystemPrompt(prompt);
+                        setSelectedTemplate("custom");
+                        toast({
+                          description: "System prompt generated successfully!"
+                        });
+                      } catch (error) {
+                        console.error("Error generating system prompt:", error);
+                        toast({
+                          title: "Using fallback generator",
+                          description: "API error encountered. Using built-in prompt generator instead.",
+                          variant: "destructive"
+                        });
+                      } finally {
+                        setIsGeneratingPrompt(false);
+                      }
+                    }}
+                    disabled={isGeneratingPrompt || !promptKeywords.trim()}
+                    className={`flex-1 p-2 rounded-md text-sm font-medium ${
+                      isGeneratingPrompt || !promptKeywords.trim() 
+                        ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed' 
+                        : 'bg-blue-500 hover:bg-blue-600 text-white'
+                    }`}
+                  >
+                    {isGeneratingPrompt ? 'Generating...' : 'Generate From Keywords'}
+                  </button>
+                </div>
+                
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Tip: Include role, personality traits, expertise areas, and tone.
+                </p>
+              </div>
+            </div>
+          )}
+          
+          {/* The actual system prompt textarea */}
+          <div className="relative">
+            {isGeneratingPrompt && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80 rounded-md z-10">
+                <div className="text-center">
+                  <div className="animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full inline-block mb-2"></div>
+                  <p className="text-sm">Generating your custom prompt...</p>
+                </div>
+              </div>
+            )}
+            <Textarea
+              id="systemPrompt"
+              placeholder="Define the behavior and capabilities of your agent"
+              value={systemPrompt}
+              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
+                setSystemPrompt(e.target.value);
+                setSelectedTemplate("custom"); // Set to custom if user edits
+              }}
+              disabled={isLoading || isGeneratingPrompt}
+              className="min-h-[200px] dark:bg-gray-800 dark:border-gray-700"
+            />
+          </div>
+          
+          <div className="flex flex-wrap gap-2 mt-1">
+            <span className="text-xs text-gray-500 dark:text-gray-400">Template suggestions:</span>
+            {promptTemplates.slice(0, 3).map((template, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  setSystemPrompt(template.template);
+                  setSelectedTemplate(template.name.toLowerCase().replace(/\s+/g, '-'));
+                  toast({
+                    description: `${template.name} template applied.`
+                  });
+                }}
+                className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded dark:bg-gray-700 dark:hover:bg-gray-600"
+              >
+                {template.name}
+              </button>
+            ))}
+          </div>
         </div>
         
         {/* Add Model Selection */}
@@ -586,6 +886,15 @@ Your dual nature allows you to connect with users of all ages and backgrounds, o
           </Select>
           <div className="text-xs text-muted-foreground mt-1">
             ⭐⭐⭐ High system prompt adherence | ⭐⭐ Medium
+          </div>
+          <div className="mt-2 p-2 border rounded-md bg-yellow-50 dark:bg-yellow-900/20 text-xs">
+            <p className="font-semibold mb-1">Note:</p>
+            <p>If you experience timeouts when generating prompts, try these more reliable models:</p>
+            <ul className="list-disc pl-4 mt-1">
+              <li>gemini-1.5-flash (fastest response)</li>
+              <li>google-gemini-pro (good quality)</li>
+              <li>pollinations-qwen (stable connection)</li>
+            </ul>
           </div>
         </div>
         
@@ -655,14 +964,12 @@ Your dual nature allows you to connect with users of all ages and backgrounds, o
                   toast({
                     title: "System prompt test successful",
                     description: data.message || "The model correctly identified with the system prompt.",
-                    duration: 5000
                   });
                 } else {
                   toast({
                     title: "System prompt test failed",
                     description: data.message || "The model did not properly respect the system prompt.",
                     variant: "destructive",
-                    duration: 5000
                   });
                 }
               } catch (error) {
@@ -818,138 +1125,6 @@ Your dual nature allows you to connect with users of all ages and backgrounds, o
           </Button>
         </div>
       </form>
-      
-      {/* Prompt Generator Dialog */}
-      <Dialog open={showPromptGenerator} onOpenChange={setShowPromptGenerator}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="text-xl">System Prompt Generator</DialogTitle>
-          </DialogHeader>
-          
-          <div className="flex-grow grid grid-cols-1 md:grid-cols-2 gap-4 overflow-hidden">
-            <div className="flex flex-col h-full">
-              <div className="mb-4">
-                <h3 className="block text-sm font-medium mb-1">Enter Keywords or Description</h3>
-                <div className="relative">
-                  <textarea
-                    id="promptKeywords"
-                    className="w-full rounded-md border border-gray-300 p-3 min-h-[150px] dark:bg-gray-800 dark:border-gray-700"
-                    placeholder="Enter keywords, roles, or a brief description of what you want your agent to do. Example: 'customer service, friendly, tech products, problem-solving'"
-                    value={promptKeywords}
-                    onChange={(e) => setPromptKeywords(e.target.value)}
-                  />
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="block text-sm font-medium mb-1">Templates</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4 max-h-[200px] overflow-y-auto">
-                  {promptTemplates.map((template, index) => (
-                    <div 
-                      key={index}
-                      className="border rounded-md p-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                      onClick={() => {
-                        setGeneratedPrompt(template.template);
-                        toast({
-                          title: "Template applied",
-                          description: `${template.name} template has been loaded.`,
-                          duration: 3000
-                        });
-                      }}
-                    >
-                      <div className="font-medium">{template.name}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">{template.description}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <h3 className="block text-sm font-medium mb-1">Tips</h3>
-                <div className="rounded-md bg-blue-50 dark:bg-blue-900/30 p-3 text-xs space-y-2">
-                  <p><strong>Include:</strong> Role (e.g., "sales agent"), personality traits (e.g., "friendly"), domain knowledge (e.g., "real estate"), and special capabilities (e.g., "problem-solving").</p>
-                  <p><strong>Best models:</strong> For optimal system prompt generation, use OpenAI GPT-4o or Llama 3.3.</p>
-                  <p><strong>Examples:</strong> "Professional copywriter, SEO expert, persuasive content, B2B" or "Math tutor, patient, explains concepts, Algebra, high school level"</p>
-                </div>
-              </div>
-              
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={generateSystemPrompt}
-                  disabled={isGeneratingPrompt || !promptKeywords.trim()}
-                  className={`w-full p-2 rounded-md font-medium ${
-                    isGeneratingPrompt || !promptKeywords.trim() 
-                      ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed' 
-                      : 'bg-blue-500 hover:bg-blue-600 text-white'
-                  }`}
-                >
-                  {isGeneratingPrompt ? 'Generating...' : 'Generate System Prompt'}
-                </button>
-              </div>
-            </div>
-            
-            <div className="flex flex-col h-full border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 pt-4 md:pt-0 md:pl-4">
-              <h3 className="block text-sm font-medium mb-1">Generated System Prompt</h3>
-              <div className="relative flex-grow overflow-auto">
-                {!generatedPrompt && !isGeneratingPrompt && (
-                  <div className="h-full flex items-center justify-center border border-dashed rounded-md p-4 text-center text-gray-400 dark:border-gray-700">
-                    <div>
-                      <AlertCircle className="mx-auto h-12 w-12 mb-2 opacity-50" />
-                      <p>Enter keywords and click "Generate System Prompt" to create a customized system prompt for your agent.</p>
-                      <p className="mt-2 text-xs">Or select one of the templates from the left panel.</p>
-                    </div>
-                  </div>
-                )}
-                
-                {isGeneratingPrompt && (
-                  <div className="h-full flex items-center justify-center border border-dashed rounded-md p-4 text-center text-gray-400 dark:border-gray-700">
-                    <div className="animate-pulse">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-2 opacity-50">
-                        <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
-                        <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
-                        <path d="M3 12v7c0 1.66 4 3 9 3s9-1.34 9-3v-7"></path>
-                        <path d="M3 5c0 1.66 4 3 9 3s9-1.34 9-3"></path>
-                        <path d="M12 8c4.97 0 9-1.34 9-3"></path>
-                      </svg>
-                      <p>Generating system prompt based on your keywords...</p>
-                      <p className="text-xs mt-1">This may take a moment as we craft a detailed prompt.</p>
-                    </div>
-                  </div>
-                )}
-                
-                {generatedPrompt && (
-                  <textarea
-                    className="w-full h-full rounded-md border border-gray-300 p-3 dark:bg-gray-800 dark:border-gray-700"
-                    value={generatedPrompt}
-                    onChange={(e) => setGeneratedPrompt(e.target.value)}
-                    readOnly={false}
-                  />
-                )}
-              </div>
-              
-              {generatedPrompt && (
-                <div className="mt-4 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setGeneratedPrompt("")}
-                    className="flex-1 p-2 rounded-md font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    type="button"
-                    onClick={applyGeneratedPrompt}
-                    className="flex-1 p-2 rounded-md font-medium bg-green-500 hover:bg-green-600 text-white"
-                  >
-                    Apply Prompt
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

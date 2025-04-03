@@ -131,3 +131,176 @@ export function isFeatureEnabled(featureName: string): boolean {
     return false;
   }
 }
+
+/**
+ * Apply dark mode to HTML element and localStorage
+ * @returns void
+ */
+export function setDarkMode() {
+  // Add dark class to document element
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.add('dark');
+  }
+  
+  // Set in local storage if available
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('theme', 'dark');
+  }
+}
+
+/**
+ * Apply light mode to HTML element and localStorage
+ * @returns void
+ */
+export function setLightMode() {
+  // Remove dark class from document element
+  if (typeof document !== 'undefined') {
+    document.documentElement.classList.remove('dark');
+  }
+  
+  // Set in local storage if available
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('theme', 'light');
+  }
+}
+
+/**
+ * Get current theme status
+ * @returns 'dark' | 'light'
+ */
+export function getCurrentTheme(): 'dark' | 'light' {
+  // Check if rendering on server
+  if (typeof window === 'undefined') return 'dark'; // Default to dark
+
+  // Check localStorage value
+  if (typeof localStorage !== 'undefined') {
+    const storedTheme = localStorage.getItem('theme');
+    if (storedTheme === 'dark' || storedTheme === 'light') {
+      return storedTheme;
+    }
+  }
+
+  // Check for OS theme preference
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+  }
+
+  // Default to dark for our Gemini style app
+  return 'dark';
+}
+
+/**
+ * Error logging levels
+ */
+export enum LogLevel {
+  DEBUG = 'debug',
+  INFO = 'info',
+  WARN = 'warn',
+  ERROR = 'error',
+  FATAL = 'fatal'
+}
+
+interface LogOptions {
+  context?: string;
+  data?: any;
+  userId?: string;
+  sendToServer?: boolean;
+  silent?: boolean;
+}
+
+/**
+ * Centralized logging utility to standardize error logging
+ */
+export const logger = {
+  /**
+   * Log a debug message
+   */
+  debug: (message: string, options: LogOptions = {}) => {
+    if (process.env.NODE_ENV === 'development' || localStorage.getItem('debug_mode') === 'true') {
+      const formattedMessage = formatLogMessage(LogLevel.DEBUG, message, options);
+      console.debug(formattedMessage, options.data || '');
+      if (options.sendToServer) sendLogToServer(LogLevel.DEBUG, message, options);
+    }
+  },
+
+  /**
+   * Log an info message
+   */
+  info: (message: string, options: LogOptions = {}) => {
+    const formattedMessage = formatLogMessage(LogLevel.INFO, message, options);
+    console.info(formattedMessage, options.data || '');
+    if (options.sendToServer) sendLogToServer(LogLevel.INFO, message, options);
+  },
+
+  /**
+   * Log a warning message
+   */
+  warn: (message: string, options: LogOptions = {}) => {
+    const formattedMessage = formatLogMessage(LogLevel.WARN, message, options);
+    console.warn(formattedMessage, options.data || '');
+    if (options.sendToServer) sendLogToServer(LogLevel.WARN, message, options);
+  },
+
+  /**
+   * Log an error message
+   */
+  error: (message: string, error?: any, options: LogOptions = {}) => {
+    const formattedMessage = formatLogMessage(LogLevel.ERROR, message, options);
+    console.error(formattedMessage, error, options.data || '');
+    if (options.sendToServer) sendLogToServer(LogLevel.ERROR, message, { ...options, data: { error, ...options.data } });
+  },
+
+  /**
+   * Log a fatal error message
+   */
+  fatal: (message: string, error?: any, options: LogOptions = {}) => {
+    const formattedMessage = formatLogMessage(LogLevel.FATAL, message, options);
+    console.error(formattedMessage, error, options.data || '');
+    sendLogToServer(LogLevel.FATAL, message, { ...options, data: { error, ...options.data } });
+  }
+};
+
+/**
+ * Format log message with timestamp and context
+ */
+function formatLogMessage(level: LogLevel, message: string, options: LogOptions): string {
+  const timestamp = new Date().toISOString();
+  const context = options.context ? `[${options.context}]` : '';
+  return `[${timestamp}] [${level.toUpperCase()}] ${context} ${message}`;
+}
+
+/**
+ * Send log to server for persistent storage
+ * This can be expanded to send logs to a server endpoint
+ */
+async function sendLogToServer(level: LogLevel, message: string, options: LogOptions) {
+  // Only send to server in production or if explicitly requested
+  if (process.env.NODE_ENV !== 'production' && !options.sendToServer) return;
+  
+  try {
+    // In a real implementation, this would send to a logging endpoint
+    // For now, we'll just console log that we would send
+    if (!options.silent) {
+      console.info(`[LOGGER] Would send to server: ${level} - ${message}`);
+    }
+    
+    // Example implementation:
+    // await fetch('/api/logs', {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({
+    //     level,
+    //     message,
+    //     context: options.context,
+    //     data: options.data,
+    //     userId: options.userId,
+    //     timestamp: new Date().toISOString(),
+    //   }),
+    // });
+  } catch (error) {
+    // Don't use the logger here to avoid infinite loops
+    console.error('[LOGGER] Failed to send log to server:', error);
+  }
+}

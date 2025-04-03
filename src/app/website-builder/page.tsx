@@ -2,13 +2,12 @@ import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/server'; // Import server client
-import { cookies } from 'next/headers'; // Needed for server client
 import { createWebsite } from './actions'; // Import the Server Action
 
 // Make the component async to allow server-side data fetching
 const WebsiteBuilderDashboardPage = async () => {
-  const cookieStore = cookies(); // Required for createClient
-  const supabase = createClient(); // Initialize server client
+  // Initialize server client with proper await and store the returned client
+  const supabase = await createClient();
 
   // Fetch user data
   const { data: { user } } = await supabase.auth.getUser();

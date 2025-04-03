@@ -10,6 +10,10 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Add trailing slash to help with URL consistency
+  trailingSlash: true,
+  // Add output for standalone mode
+  output: 'standalone',
   images: {
     domains: [
       'placehold.co',
@@ -24,6 +28,7 @@ const nextConfig = {
       'text.pollinations.ai',
       'image.pollinations.ai'
     ],
+    unoptimized: true,
   },
   env: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
@@ -35,6 +40,7 @@ const nextConfig = {
       bodySizeLimit: '2mb',
     },
   },
+  // Update rewrites to match the port being used
   async rewrites() {
     return [
       {

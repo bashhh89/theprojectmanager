@@ -1,9 +1,9 @@
 import React from 'react';
 import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { PlusCircle } from 'lucide-react';
+import { logger } from '@/lib/utils';
 
 interface PageManagerProps {
   params: { siteId: string };
@@ -12,8 +12,7 @@ interface PageManagerProps {
 // Fetch and display pages for the current site
 const PageManagerPage = async ({ params }: PageManagerProps) => {
   const { siteId } = params;
-  const cookieStore = cookies();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   let pages: any[] = [];
   let fetchError: string | null = null;
@@ -25,7 +24,7 @@ const PageManagerPage = async ({ params }: PageManagerProps) => {
     .order('created_at', { ascending: true });
 
   if (error) {
-    console.error('Error fetching pages:', error);
+    logger.error('Error fetching pages', error, { context: 'website-builder-pages', data: { siteId } });
     fetchError = 'Could not fetch pages.';
   } else {
     pages = data || [];

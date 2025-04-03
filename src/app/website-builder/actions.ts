@@ -1,23 +1,18 @@
 'use server' // Mark this module as containing Server Actions
 
 import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 
 export async function createWebsite(formData: FormData) {
-  const cookieStore = cookies()
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const { data: { user }, error: userError } = await supabase.auth.getUser()
 
   if (userError || !user) {
     console.error('User not authenticated', userError)
-    // Instead of returning, redirect to login or throw an error
-    // Option 1: Redirect (if you have a login page)
-    // redirect('/login?message=Authentication required');
-    // Option 2: Throw an error (will likely show Next.js error page)
-    throw new Error('Authentication required.'); 
+    // Redirect to login page instead of throwing an error
+    redirect('/login?message=Authentication+required');
   }
 
   const newSiteName = formData.get('siteName')?.toString() || 'My New Site';
@@ -65,8 +60,7 @@ export async function createWebsite(formData: FormData) {
 export async function createPage(websiteId: string, formData: FormData) {
   'use server' // Can also mark individual functions
 
-  const cookieStore = cookies()
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const pageName = formData.get('pageName')?.toString()
   let pageSlug = formData.get('pageSlug')?.toString()
@@ -84,7 +78,10 @@ export async function createPage(websiteId: string, formData: FormData) {
 
   // Verify user owns the website (important check!)
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Authentication required.' };
+  if (!user) {
+    // Redirect to login page instead of returning an error
+    redirect('/login?message=Authentication+required');
+  }
 
   const { data: websiteOwner, error: ownerError } = await supabase
     .from('websites')

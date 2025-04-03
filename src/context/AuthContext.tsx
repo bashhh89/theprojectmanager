@@ -22,47 +22,124 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const createUserProfile = async (userId: string, email: string) => {
+    console.log('Creating user profile for:', { userId, email });
+    
+    try {
+      // First check if profile already exists
+      const { data: existingProfile, error: checkError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('id', userId)
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "not found"
+        console.error('Error checking existing profile:', checkError);
+        throw checkError;
+      }
+
+      if (existingProfile) {
+        console.log('User profile already exists:', existingProfile);
+        return;
+      }
+
+      // Create new profile if it doesn't exist
+      const { data: newProfile, error: insertError } = await supabase
+        .from('user_profiles')
+        .insert([
+          {
+            id: userId,
+            role: 'user',
+            full_name: email.split('@')[0],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }
+        ])
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Error creating user profile:', {
+          code: insertError.code,
+          message: insertError.message,
+          details: insertError.details,
+          hint: insertError.hint
+        });
+        throw insertError;
+      }
+
+      console.log('User profile created successfully:', newProfile);
+    } catch (error: any) {
+      console.error('Error in profile creation:', {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      throw error;
+    }
+  };
+
   useEffect(() => {
+    console.log("AuthProvider: Initializing auth state");
+    
+    // Add a safety timeout to prevent endless loading
+    const safetyTimeout = setTimeout(() => {
+      if (loading) {
+        console.log("AuthProvider: Safety timeout reached, forcing loading to false");
+        setLoading(false);
+      }
+    }, 3000); // 3 second timeout
+    
     // 1. Check for initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("AuthProvider: Initial session check complete", !!session);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
 
       // 2. Set up the auth state change listener
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
-        (_event, session) => {
+        async (_event, session) => {
           console.log("Auth state changed:", _event, session?.user?.email);
           setSession(session);
           setUser(session?.user ?? null);
-          setLoading(false); // Ensure loading is false after updates
+          setLoading(false);
+
+          // If this is a new signup or first login, create the user profile
+          if ((_event === 'SIGNED_IN' || _event === 'TOKEN_REFRESHED') && session?.user) {
+            try {
+              await createUserProfile(session.user.id, session.user.email || '');
+            } catch (error) {
+              console.error('Failed to create/verify user profile:', error);
+            }
+          }
         }
       );
 
-      // 3. Cleanup listener on component unmount
       return () => {
-        subscription?.unsubscribe();
+        subscription.unsubscribe();
+        clearTimeout(safetyTimeout);
       };
-    }).catch(error => {
-        console.error("Error getting initial session:", error);
-        setLoading(false); // Ensure loading is false even on error
     });
-
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    // State will update via onAuthStateChange listener
+    try {
+      await supabase.auth.signOut();
+      setSession(null);
+      setUser(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
-  const value = {
-    session,
-    user,
-    loading,
-    signOut,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ session, user, loading, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = (): AuthContextType => {
