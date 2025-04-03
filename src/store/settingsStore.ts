@@ -1,5 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { TextModel, ImageModel } from '@/lib/constants'
+
+export type TextModelId = TextModel;
 
 // Define the default agent
 const defaultAgent = {
@@ -8,8 +11,8 @@ const defaultAgent = {
   systemPrompt: "You are a helpful AI assistant.",
   system_prompt: "You are a helpful AI assistant.",
   modelPreferences: {
-    textModel: "openai",
-    imageModel: "flux",
+    textModel: "openai" as TextModel,
+    imageModel: "flux" as ImageModel,
     voiceModel: "alloy"
   }
 }
@@ -24,8 +27,8 @@ export interface Agent {
   system_prompt: string
   description?: string
   modelPreferences?: {
-    textModel?: string
-    imageModel?: string
+    textModel?: TextModel
+    imageModel?: ImageModel
     voiceModel?: string
   }
   enableSpokenResponses?: boolean
@@ -34,10 +37,10 @@ export interface Agent {
 interface SettingsState {
   darkMode: boolean
   setDarkMode: (darkMode: boolean) => void
-  activeTextModel: string
-  setActiveTextModel: (model: string) => void
-  activeImageModel: string
-  setActiveImageModel: (model: string) => void
+  activeTextModel: TextModel
+  setActiveTextModel: (model: TextModel) => void
+  activeImageModel: ImageModel
+  setActiveImageModel: (model: ImageModel) => void
   activeVoice: string
   setActiveVoice: (voice: string) => void
   activeAgent: Agent | null
@@ -62,11 +65,11 @@ export const useSettingsStore = create<SettingsState>()(
       setDarkMode: (darkMode) => set({ darkMode }),
       
       // Initialize with default values
-      activeTextModel: "openai",
-      setActiveTextModel: (model) => set({ activeTextModel: model }),
+      activeTextModel: "openai" as TextModel,
+      setActiveTextModel: (model: TextModel) => set({ activeTextModel: model }),
       
-      activeImageModel: "flux",
-      setActiveImageModel: (model) => set({ activeImageModel: model }),
+      activeImageModel: "flux" as ImageModel,
+      setActiveImageModel: (model: ImageModel) => set({ activeImageModel: model }),
       
       activeVoice: "nova",
       setActiveVoice: (voice) => set({ activeVoice: voice }),

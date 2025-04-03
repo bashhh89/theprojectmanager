@@ -60,6 +60,7 @@ const savePromptToStorage = (prompts: SavedPrompt[]) => {
 // Add a ChatInputProps interface to match what chat-interface expects
 interface ChatInputProps {
   onSubmit: (content: string) => void;
+  isGenerating?: boolean;
 }
 
 // Add forwardRef to make the input ref accessible from parent
