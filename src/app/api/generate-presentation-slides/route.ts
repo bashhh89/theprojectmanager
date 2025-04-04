@@ -1,8 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
-
-// Ensure you have GOOGLE_GENERATIVE_AI_API_KEY in your environment variables
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY || '');
 
 // Define the expected structure for each slide object from the AI
 interface AISlideObject {
@@ -10,6 +6,17 @@ interface AISlideObject {
   content: string; // Expecting markdown content
   layout: 'background' | 'split-left' | 'split-right' | 'text-only';
   imagePrompt?: string; // Optional prompt for image generation on non-text-only slides
+}
+
+// Define client metadata interface
+interface ClientMetadata {
+  companyName: string;
+  industry?: string;
+  website?: string;
+  linkedInUrl?: string;
+  recipientName?: string;
+  recipientRole?: string;
+  primaryGoal?: string;
 }
 
 export async function POST(req: NextRequest) {
@@ -22,96 +29,184 @@ export async function POST(req: NextRequest) {
       additionalInfo,
       clientName,
       projectGoal,
-      brandProfile // Optional: Contains colors, fonts etc. We might use this in the prompt
+      brandProfile,
+      slideCount = 10,
+      contentLength = 'medium',
+      // Allow passing model, default to 'openai' as used in chat route
+      model: requestedModel = 'openai',
+      // Add client metadata
+      clientMetadata
     } = body;
 
-    // --- 1. Construct the Prompt based on Presentation Type --- 
-    let systemPrompt = "You are an AI assistant specialized in creating professional presentations.\n";
-    systemPrompt += "Generate a JSON array of slide objects for the requested presentation. Each object must have the following properties:\n";
-    systemPrompt += "- \"title\": A concise string for the slide title.\n";
-    systemPrompt += "- \"content\": A string containing the slide content formatted as Markdown (use headings, lists, paragraphs).\n";
-    systemPrompt += "- \"layout\": A string suggesting a layout from: 'background', 'split-left', 'split-right', 'text-only'. Choose appropriately based on content.\n";
-    systemPrompt += "- \"imagePrompt\": (Optional) If the layout is NOT 'text-only', provide a short, descriptive string prompt suitable for generating a relevant background or side image (e.g., 'futuristic cityscape', 'team collaborating around a table'). Omit this field or set to null for 'text-only' layouts.\n";
-    systemPrompt += "Ensure the output is ONLY the valid JSON array, starting with [ and ending with ]. Do not include any text before or after the JSON array.";
-    
-    let userQuery = `Presentation Type: ${presentationType}\n`;
-    if (presentationType === 'general') {
-        userQuery += `Topic: ${topic}\n`;
-        userQuery += `Target Audience: ${audience || 'General'}\n`;
-        if (additionalInfo) userQuery += `Additional Notes: ${additionalInfo}\n`;
-        userQuery += `Generate approximately 5-8 slides suitable for a general presentation on this topic.`;
-    } else if (presentationType === 'proposal') {
-        userQuery += `Client: ${clientName}\n`;
-        userQuery += `Project Goal: ${projectGoal}\n`;
-        userQuery += `Target Audience: ${audience || 'Client Decision Makers'}\n`;
-        if (additionalInfo) userQuery += `Additional Proposal Details: ${additionalInfo}\n`;
-        if (brandProfile?.name) userQuery += `Presenting Brand: ${brandProfile.name}\n`; // Include brand name
-        userQuery += `Generate approximately 6-10 slides following a standard sales proposal structure (e.g., Intro, Problem, Solution, About Us, Next Steps). Tailor content towards the client and goal.`;
+    // Validate required fields
+    if (presentationType === 'general' && !topic) {
+      return NextResponse.json({ error: 'Topic is required for general presentations' }, { status: 400 });
     }
-    
-    if (brandProfile) {
-       userQuery += `\nConsider the brand's identity if possible (e.g., tone, focus areas - details not fully provided here but keep in mind).`;
+    if (presentationType === 'proposal' && (!clientName || !projectGoal)) {
+      return NextResponse.json({ error: 'Client name and project goal are required for proposals' }, { status: 400 });
     }
 
-    // --- 2. Call the AI Model --- 
-    console.log("Sending prompt to AI:", userQuery);
-    
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" }); // Use a capable model
-    const generationConfig = {
-      // Ensure JSON output if model supports it, otherwise rely on prompt instructions
-      // responseMimeType: "application/json", // Enable if model explicitly supports JSON mode
-      temperature: 0.7,
-      topK: 1,
-      topP: 1,
-      maxOutputTokens: 8192, // Allow ample space for JSON output
-    };
-    const safetySettings = [
-        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+    // --- 1. Construct the System Prompt --- 
+    const systemPrompt = `You are an AI assistant specialized in creating professional presentations.
+Generate a presentation with ${slideCount} slides about the given topic.
+The output must be a valid JSON array of slide objects, each containing:
+{
+  "title": "string (concise slide title)",
+  "content": "string (markdown-formatted content with headings, lists, etc.)",
+  "layout": "string (one of: 'background', 'split-left', 'split-right', 'text-only')",
+  "imagePrompt": "string (optional: only if layout is not 'text-only', describe the image needed)"
+}
+
+Content length should be ${contentLength} (short=brief bullet points, medium=balanced, long=detailed).
+Choose appropriate layouts based on content type.
+Ensure all content is professional and presentation-friendly.
+The response MUST BE ONLY the JSON array, with no introductory text, markdown formatting (like \`\`\`json), or closing remarks. Strictly the JSON array.`;
+
+    // --- 2. Construct the User Query --- 
+    let userQuery = `Create a ${presentationType} presentation with the following details:\n`;
+    if (presentationType === 'general') {
+      userQuery += `Topic: ${topic}\n`;
+      userQuery += `Target Audience: ${audience || 'General'}\n`;
+      if (additionalInfo) userQuery += `Additional Notes: ${additionalInfo}\n`;
+    } else if (presentationType === 'proposal') {
+      userQuery += `Client: ${clientName}\n`;
+      userQuery += `Project Goal: ${projectGoal}\n`;
+      userQuery += `Target Audience: ${audience || 'Client Decision Makers'}\n`;
+      if (additionalInfo) userQuery += `Additional Proposal Details: ${additionalInfo}\n`;
+      if (brandProfile?.name) userQuery += `Presenting Brand: ${brandProfile.name}\n`;
+      
+      // Add client metadata if available
+      if (clientMetadata) {
+        userQuery += "\nDetailed Client Information (for personalization):\n";
+        if (clientMetadata.companyName) userQuery += `Company: ${clientMetadata.companyName}\n`;
+        if (clientMetadata.industry) userQuery += `Industry: ${clientMetadata.industry}\n`;
+        if (clientMetadata.recipientName) userQuery += `Main Contact: ${clientMetadata.recipientName}`;
+        if (clientMetadata.recipientRole) userQuery += `, ${clientMetadata.recipientRole}`;
+        userQuery += "\n";
+        if (clientMetadata.primaryGoal) userQuery += `Primary Goal: ${clientMetadata.primaryGoal}\n`;
+      }
+    }
+    userQuery += `\nIMPORTANT: Respond ONLY with the valid JSON array containing the slide objects.`;
+
+    // --- 3. Call the Pollinations AI Model --- 
+    const messages = [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userQuery }
     ];
 
-    const chat = model.startChat({
-      generationConfig,
-      safetySettings,
-      history: [
-        { role: "user", parts: [{ text: systemPrompt }] },
-        { role: "model", parts: [{ text: "Okay, I understand. I will generate the presentation slides as a valid JSON array with the specified structure: title, content (markdown), layout, and optional imagePrompt." }] },
-      ],
+    console.log(`Sending request to Pollinations for presentation: ${topic || clientName}`);
+    const response = await fetch('https://text.pollinations.ai/openai', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: requestedModel, // Use the model (defaults to 'openai')
+        messages: messages
+      }),
     });
-    
-    const result = await chat.sendMessage(userQuery);
-    const response = result.response;
-    const responseText = response.text();
-    console.log("Raw AI Response Text:", responseText); // Log the raw response
 
-    // --- 3. Parse the AI Response --- 
-    let slides: AISlideObject[] = [];
-    try {
-        // Clean the response: Remove potential markdown code blocks or leading/trailing text
-        const cleanedText = responseText.replace(/```json\n?|```/g, '').trim();
-        slides = JSON.parse(cleanedText);
-        // Basic validation
-        if (!Array.isArray(slides) || slides.length === 0) {
-             throw new Error('AI did not return a valid array of slides.');
-        }
-        // Further validation could check for required properties on each slide object
-    } catch (parseError: any) {
-        console.error("Failed to parse AI response as JSON:", parseError);
-        // Log the original text *before* trying to clean it in this catch block
-        console.error("Raw text before parsing attempt:", responseText); 
-        // Try a simpler fallback (e.g., a single error slide)
-        slides = [{ title: "Error", content: "# Failed to Generate Slides\n\nThe AI response could not be processed.", layout: 'text-only' }];
-        // Return error response instead?
-        // return NextResponse.json({ error: "Failed to parse AI response.", details: parseError.message }, { status: 500 });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Pollinations API Error Response:", errorText);
+      throw new Error(`Pollinations API error: ${response.status} - ${errorText}`);
     }
 
-    // --- 4. Return the Slides --- 
-    return NextResponse.json({ slides });
+    const data = await response.json();
+    
+    // Extract the response content which *should* be the JSON string
+    const responseText = data?.choices?.[0]?.message?.content;
+    
+    if (!responseText) {
+      console.error("Invalid response structure from Pollinations:", data);
+      throw new Error('Received invalid response structure from Pollinations API.');
+    }
+
+    console.log("Received response text from Pollinations:", responseText);
+
+    // --- 4. Parse and Validate the Response --- 
+    let slides: AISlideObject[] = [];
+    let parsingSuccess = false;
+    try {
+      // Clean the response text to ensure it's valid JSON
+      const cleanedText = responseText
+        .replace(/^```json\n?/, '') // Remove leading ```json
+        .replace(/^\s*\[/, '[')     // Ensure it starts with [
+        .replace(/\]\s*$/, ']')     // Ensure it ends with ]
+        .trim();
+
+      if (!cleanedText.startsWith('[') || !cleanedText.endsWith(']')) {
+        throw new Error('Cleaned text is not a valid JSON array string.');
+      }
+
+      // Parse the JSON
+      slides = JSON.parse(cleanedText);
+      console.log("Successfully parsed JSON. Parsed object:", slides);
+
+      // Validate the array
+      if (!Array.isArray(slides)) {
+        throw new Error('Response is not an array');
+      }
+
+      // Validate each slide
+      slides = slides.map((slide, index) => {
+        if (!slide || typeof slide !== 'object') {
+          console.warn(`Invalid slide structure at index ${index}, skipping.`);
+          return null; // Mark for removal
+        }
+        const isValidLayout = ['background', 'split-left', 'split-right', 'text-only'].includes(slide.layout);
+        return {
+          title: slide.title || 'Untitled Slide',
+          content: slide.content || '# No Content\n\nThis slide was not generated correctly.',
+          layout: isValidLayout ? slide.layout : 'text-only',
+          imagePrompt: !isValidLayout || slide.layout === 'text-only' ? undefined : slide.imagePrompt
+        };
+      }).filter(slide => slide !== null) as AISlideObject[]; // Filter out invalid slides
+
+      // Ensure we have at least one valid slide
+      if (slides.length === 0) {
+        console.warn("No valid slides found after validation.");
+        throw new Error('No valid slides generated after parsing and validation.');
+      }
+
+      console.log(`Validation complete. Found ${slides.length} valid slides.`);
+      parsingSuccess = true; // Mark parsing as successful
+
+    } catch (parseError: any) {
+      console.error("Failed to parse or validate AI response:", parseError);
+      console.error("Raw response text during parse error:", responseText);
+      
+      // Return a single error slide
+      slides = [{
+        title: "Generation Error",
+        content: `# Generation Error\n\nFailed to generate presentation slides correctly. The AI response could not be processed.\n\n**Error:** ${parseError.message}`,
+        layout: "text-only"
+      }];
+      // Still return 200 OK here, but with an error slide content
+      return NextResponse.json({ slides });
+    }
+
+    // --- 5. Return the Slides --- 
+    if (parsingSuccess && slides.length > 0) {
+      console.log(`Successfully generated ${slides.length} slides for presentation: ${topic || clientName}`);
+      // Pass clientMetadata in the response
+      return NextResponse.json({ 
+        slides,
+        clientMetadata 
+      });
+    } else {
+      // Should ideally not be reached if parsing error is handled, but as a fallback
+      console.error("Reached end of API route without valid slides despite no explicit parsing error.");
+      return NextResponse.json({ 
+        error: "Failed to generate valid presentation slides after processing AI response.", 
+      }, { status: 500 });
+    }
 
   } catch (error: any) {
     console.error("Error in /api/generate-presentation-slides:", error);
-    return NextResponse.json({ error: "Failed to generate presentation slides", details: error.message }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Failed to generate presentation slides", 
+      details: error.message 
+    }, { status: 500 });
   }
 } 

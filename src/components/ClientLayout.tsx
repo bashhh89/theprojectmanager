@@ -28,7 +28,8 @@ const publicRoutes = [
   '/auth',
   '/forgot-password',
   '/reset-password',
-  '/register/confirmation'
+  '/register/confirmation',
+  '/foundational-partner'
 ]
 
 interface ClientLayoutProps {

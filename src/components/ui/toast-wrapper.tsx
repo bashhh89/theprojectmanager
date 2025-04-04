@@ -29,7 +29,10 @@ export const toasts = {
     showToast({ title: message, description, variant: "default", duration: 5000 }),
     
   error: (message: string, description?: string) =>
-    showToast({ title: message, description, variant: "destructive", duration: 5000 })
+    showToast({ title: message, description, variant: "destructive", duration: 5000 }),
+    
+  info: (message: string, description?: string) =>
+    showToast({ title: message, description, variant: "default", duration: 4000 })
 };
 
 // Export the original toast function as well for backward compatibility

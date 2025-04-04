@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 
-// Updated with more comprehensive public routes
+// Expanded list of public routes
 const publicRoutes = [
   '/', 
   '/login', 
@@ -13,65 +13,153 @@ const publicRoutes = [
   '/auth',
   '/forgot-password',
   '/reset-password',
-  '/register/confirmation'
+  '/register/confirmation',
+  '/products', 
+  '/products/new',
+  '/proposals',
+  '/shared-proposal',
+  '/company',
+  '/tools/presentation-generator',
+  '/my-presentations',
+  '/foundational-partner'
 ];
+
+// Add path checking helper that handles path patterns
+const isPublicPath = (path: string) => {
+  const cleanedPath = path.endsWith('/') && path.length > 1 
+    ? path.slice(0, -1) 
+    : path;
+  
+  // Check if path is exactly in the publicRoutes list
+  if (publicRoutes.includes(cleanedPath)) {
+    return true;
+  }
+  
+  // Check if path starts with any of these patterns
+  const publicPathPatterns = [
+    '/shared-proposal/', 
+    '/tools/', 
+    '/products/',
+    '/proposals/',
+    '/api/',
+    '/foundational-partner/'
+  ];
+  
+  return publicPathPatterns.some(pattern => cleanedPath.startsWith(pattern));
+};
 
 export default function AuthWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { loading, user } = useAuth();
-  // Use true as initial state to avoid blank screen
-  const [mounted, setMounted] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  const [redirectInProgress, setRedirectInProgress] = useState(false);
 
   useEffect(() => {
-    // Redirect to login if not authenticated and not on public route
-    const cleanedPathname = pathname.endsWith('/') && pathname.length > 1 
-      ? pathname.slice(0, -1) 
-      : pathname;
-      
-    if (!loading && !user && !publicRoutes.includes(cleanedPathname)) {
-      console.log("AuthWrapper: Redirecting to /login");
-      router.push('/login');
+    setMounted(true);
+    console.log('[AUTH-DEBUG] AuthWrapper mounted, current auth state:', { 
+      loading, 
+      user: !!user, 
+      userEmail: user?.email,
+      pathname 
+    });
+  }, [loading, user, pathname]);
+
+  // TEMPORARY FIX: Disable automatic redirects completely to debug the login issue
+  const DISABLE_REDIRECTS = true;
+
+  // Handle redirects with rate limiting to prevent loops
+  useEffect(() => {
+    if (DISABLE_REDIRECTS) {
+      console.log('[AUTH-DEBUG] Redirects temporarily disabled for debugging');
+      return;
     }
-  }, [loading, user, pathname, router]);
+
+    // Skip if a redirect is already in progress
+    if (redirectInProgress) {
+      return;
+    }
+
+    const isPublic = isPublicPath(pathname);
+    
+    console.log('[AUTH-DEBUG] Auth state changed:', { 
+      loading, 
+      authenticated: !!user, 
+      pathname,
+      isPublic,
+      redirectInProgress
+    });
+
+    // Only redirect if not loading (auth state is determined)
+    if (!loading) {
+      // Case 1: Unauthenticated user on protected route -> redirect to login
+      if (!user && !isPublic) {
+        console.log("[AUTH-DEBUG] Redirecting to /login");
+        setRedirectInProgress(true);
+        
+        // Use a setTimeout to prevent potential rapid redirect loops
+        setTimeout(() => {
+          router.push('/login');
+          // Reset the redirect flag after a delay
+          setTimeout(() => setRedirectInProgress(false), 2000);
+        }, 100);
+      }
+      
+      // Case 2: Authenticated user on login page -> redirect to dashboard
+      // Only apply this if user is on the specific login page, not any public page
+      else if (user && (pathname === '/login' || pathname === '/signup')) {
+        console.log("[AUTH-DEBUG] Redirecting authenticated user from login to /chat");
+        setRedirectInProgress(true);
+        
+        setTimeout(() => {
+          router.push('/chat');
+          // Reset the redirect flag after a delay
+          setTimeout(() => setRedirectInProgress(false), 2000);
+        }, 100);
+      }
+    }
+  }, [loading, user, pathname, router, redirectInProgress]);
 
   // Check if current route is public
-  const cleanedPathname = pathname.endsWith('/') && pathname.length > 1 
-    ? pathname.slice(0, -1) 
-    : pathname;
-  const isPublicRoute = publicRoutes.includes(cleanedPathname);
+  const isPublicRoute = isPublicPath(pathname);
 
   // For public routes, always render children immediately
   if (isPublicRoute) {
-    console.log("AuthWrapper: Public route, rendering children immediately", { pathname, cleanedPathname });
     return <>{children}</>;
   }
 
-  // For protected routes, apply normal loading/auth checks
+  // Always render children if redirects are disabled (debug mode)
+  if (DISABLE_REDIRECTS) {
+    return <>{children}</>;
+  }
   
   // Ensure component is mounted  
   if (!mounted) {
-    console.log("AuthWrapper: Not mounted, returning null");
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-900">
+        <p className="text-zinc-400">Initializing application...</p>
+      </div>
+    );
   }
 
   // Show loading state for protected routes
   if (loading) {
-    console.log("AuthWrapper: Loading auth state...");
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-900">
-        <p className="text-zinc-400">Loading...</p>
+        <p className="text-zinc-400">Loading authentication...</p>
       </div>
     );
   }
 
   // For authenticated users on protected routes
   if (user) {
-    console.log("AuthWrapper: User authenticated, rendering children", { user: !!user });
     return <>{children}</>;
   }
 
   // Don't render anything for unauthenticated users on protected routes (while redirecting)
-  console.log("AuthWrapper: Not public, not authenticated, returning null for redirect", { pathname });
-  return null;
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-zinc-900">
+      <p className="text-zinc-400">Redirecting to login...</p>
+    </div>
+  );
 } 

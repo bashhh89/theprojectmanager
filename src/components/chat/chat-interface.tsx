@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, MessageContent } from '@/store/chatStore';
+import { Message } from '@/store/chatStore';
 import { useSettingsStore, Agent, TextModelId } from '@/store/settingsStore';
 import { useChatStore } from '@/store/chatStore';
 import { useTheme } from 'next-themes';
@@ -23,35 +23,48 @@ import { Sparkle, Pencil, Plus, Menu, CircleUser, MessageSquare, Book, Settings 
 import { useHotkeys } from 'react-hotkeys-hook';
 import { ModelSelector } from '@/components/chat/model-selector';
 import { TextModel } from '@/lib/constants';
+import { processMessage } from '@/lib/prompt-service';
+import { Message as StoreMessage } from '@/store/chatStore';
 
 // Configure marked options for security and features
 marked.setOptions({
   breaks: true,
-  gfm: true
+  gfm: true,
+  mangle: false
 });
 
 // Safely render markdown with image support
 const renderMarkdown = (content: string) => {
   try {
-    const imageRegex = /!\[(.*?)\]\((https:\/\/image\.pollinations\.ai\/prompt\/.*?)\)/g;
+    // Clean up table formatting first
     let processedContent = content.replace(
-      imageRegex,
+      /\|(.+)\|/g,
+      (match) => {
+        if ((match.match(/\|/g) || []).length > 2) {
+          // Normalize spacing around pipes and trim whitespace
+          return match.split('|')
+            .map(cell => cell.trim())
+            .filter(cell => cell)
+            .join(' | ')
+            .trim();
+        }
+        return match;
+      }
+    );
+
+    // Add proper table wrapper
+    processedContent = processedContent.replace(
+      /(\|.+\|\n\|[-:\|\s]+\|\n(\|.+\|\n)+)/g,
+      (table) => `<div class="table-wrapper">\n${table}\n</div>`
+    );
+
+    // Process images
+    processedContent = processedContent.replace(
+      /!\[(.*?)\]\((https:\/\/image\.pollinations\.ai\/prompt\/.*?)\)/g,
       (match, altText, imageUrl) => {
         return `<div class="image-preview my-4">
           <img src="${imageUrl}" alt="${altText}" class="rounded-md max-w-full h-auto" />
           <p class="text-xs text-zinc-400 mt-1">${altText}</p>
-        </div>`;
-      }
-    );
-    
-    processedContent = processedContent.replace(
-      /!\[Generated Image\]\(https:\/\/image\.pollinations\.ai\/prompt\/(.*?)(\?width=(\d+)&height=(\d+)&nologo=true)\)/g,
-      (match, encodedPrompt, params, width, height) => {
-        const decodedPrompt = decodeURIComponent(encodedPrompt);
-        const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}${params}`;
-        return `<div class="image-preview my-4">
-          <img src="${imageUrl}" alt="${decodedPrompt}" class="rounded-md my-2 max-w-full" />
-          <p class="text-xs text-zinc-400 mt-1">${decodedPrompt}</p>
         </div>`;
       }
     );
@@ -76,6 +89,18 @@ const KEYBOARD_SHORTCUTS = {
 
 type ModelListType = typeof MODEL_LIST.TEXT[number];
 
+interface LocalMessageContent {
+  type: 'text' | 'image';
+  content: string;
+}
+
+interface LocalMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: LocalMessageContent[];
+  timestamp: number;
+}
+
 export function ChatInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -92,7 +117,9 @@ export function ChatInterface() {
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const [messageQueue, setMessageQueue] = useState<Message[]>([]);
+  const [isEditingTitle, setIsEditingTitle] = useState<string | null>(null);
+  const [editedTitle, setEditedTitle] = useState('');
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const availableModels = MODEL_LIST.TEXT.map((model: ModelListType) => model.id);
   
@@ -112,12 +139,21 @@ export function ChatInterface() {
     isGenerating, 
     createChat,
     resetAll,
-    setIsGenerating
+    setIsGenerating,
+    activeChatId,
+    chatSessions
   } = useChatStore();
   
   const messages = getActiveChatMessages();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+
+  // Initialize chat if none exists
+  useEffect(() => {
+    if (!activeChatId && chatSessions.length === 0) {
+      createChat();
+    }
+  }, [activeChatId, chatSessions.length, createChat]);
 
   useEffect(() => {
     setTheme('dark');
@@ -142,45 +178,30 @@ export function ChatInterface() {
   }, []);
 
   useEffect(() => {
-    if (messagesEndRef.current && messages.length > 0) {
+    const scrollToBottom = () => {
       const container = chatContainerRef.current;
+      
       if (container) {
-        const prevScrollHeight = container.scrollHeight;
-        
-        const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-        const isUserMessage = messages[messages.length - 1]?.role === 'user';
-        
-        if (isNearBottom || isUserMessage) {
-          requestAnimationFrame(() => {
-            const newScrollHeight = container.scrollHeight;
-            const heightDiff = newScrollHeight - prevScrollHeight;
-            
-            if (heightDiff > 0) {
-              container.scrollTop = container.scrollTop + heightDiff;
-            }
-            
-            messagesEndRef.current?.scrollIntoView({ 
-              behavior: isUserMessage ? "auto" : "smooth",
-              block: "end"
-            });
-          });
-        }
+        container.scrollTop = container.scrollHeight;
       }
-    }
-  }, [messages]);
+    };
+
+    // Call scrollToBottom whenever messages change or when generating
+    requestAnimationFrame(scrollToBottom);
+  }, [messages, isGenerating]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    const handleClickOutside = (event: MouseEvent) => {
       if (showAccountMenu) {
         setShowAccountMenu(false);
       }
-    }
+    };
     
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showAccountMenu]);
+  }, [showAccountMenu, setShowAccountMenu]);
 
   const handleNewChat = () => {
     try {
@@ -261,36 +282,31 @@ export function ChatInterface() {
     setShowAllModels(prev => !prev);
   });
 
-  const handleMessageSubmit = async (content: string) => {
-    if (!content.trim() || !isOnline) {
-      if (!isOnline) {
-        setMessageQueue(prev => [...prev, { 
-          role: "user", 
-          content: [{ type: 'text' as const, content: content.trim() }] 
-        }]);
-        showInfo('Message queued - will send when back online');
-      }
-      return;
-    }
+  const handleSubmit = async (content: string) => {
+    if (!content.trim()) return;
 
     try {
-      await smartRetry(async () => {
-        await addMessage({ 
-          role: "user", 
-          content: [{ type: 'text' as const, content: content.trim() }] 
-        });
-      });
+      // Add user message
+      addMessage('user', content);
+      setIsGenerating(true);
 
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      setLastError(null);
+      // Process the message and get AI response
+      const response = await processMessage(content);
+
+      // Add AI response
+      if (response.success) {
+        addMessage('assistant', response.content);
+      } else {
+        addMessage('assistant', `Error: ${response.error || 'Unknown error'}`);
+      }
     } catch (error) {
       logError({
-        error: error instanceof Error ? error.toString() : 'Failed to send message',
-        context: 'Message Submit',
-        additionalData: { content, retryCount }
+        error: error instanceof Error ? error.toString() : 'Failed to process message',
+        context: 'Message Processing'
       });
-      setLastError('Failed to send message');
-      showError('Message failed to send. Will retry automatically.');
+      showError('Could not process message. Please try again.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -310,82 +326,13 @@ export function ChatInterface() {
     </div>
   );
 
-  const handleSubmit = async (content: string) => {
-    if (!content.trim()) return;
-
-    try {
-      const formattedContent: MessageContent[] = [{ type: 'text' as const, content: content.trim() }];
-
-      await addMessage({
-        role: 'user',
-        content: formattedContent
-      });
-
-      setIsGenerating(true);
-
-      let response;
-      try {
-        response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messages: [...messages, { role: 'user', content: formattedContent }],
-            model: activeTextModel,
-            systemPrompt: activeAgent?.systemPrompt,
-            agent: activeAgent
-          }),
-        });
-      } catch (error) {
-        console.error('Error calling API:', error);
-        const fallbackModel: TextModel = 'openai';
-        response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messages: [...messages, { role: 'user', content: formattedContent }],
-            model: fallbackModel,
-            systemPrompt: activeAgent?.systemPrompt,
-            agent: activeAgent
-          }),
-        });
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get response from AI');
-      }
-
-      const data = await response.json();
-      
-      await addMessage({
-        role: 'assistant',
-        content: [{ type: 'text' as const, content: data.message }]
-      });
-
-    } catch (error) {
-      console.error('Error in handleSubmit:', error);
-      
-      await addMessage({
-        role: 'assistant',
-        content: [{ type: 'text' as const, content: 'I apologize, but I\'m having trouble connecting to the AI service right now. Please try again in a few moments.' }]
-      });
-
-      showError('Unable to connect to the AI service. Please try again later.');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   if (!mounted) {
     return <div className="h-screen w-screen bg-zinc-900"></div>;
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-zinc-900 text-zinc-200">
+    <div className="fixed inset-0 ml-[240px]">
+      <div className="flex h-full flex-col overflow-hidden bg-zinc-900 text-zinc-200">
       <header className="shrink-0 border-b border-zinc-700/50 px-4 py-3 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
           <ModelSelector
@@ -444,16 +391,6 @@ export function ChatInterface() {
               </div>
             </SelectContent>
           </Select>
-          
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-zinc-400 hover:text-zinc-100 flex items-center gap-1 text-xs"
-            onClick={handleNewChat}
-          > 
-            <Plus size={16} /> 
-            <span>New Chat</span>
-          </Button>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -512,7 +449,12 @@ export function ChatInterface() {
       <main className="flex-1 overflow-hidden relative">
         <div 
           ref={chatContainerRef}
-          className="h-full overflow-y-auto"
+            className="h-full overflow-y-auto overflow-x-hidden px-4"
+            style={{ 
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
+              scrollBehavior: 'smooth'
+            }}
         >
           {isNewChat ? (
             <div className="h-full flex flex-col items-center justify-center p-4 text-center">
@@ -522,12 +464,34 @@ export function ChatInterface() {
                   <path d="M11.9999 21.2424C16.142 21.2424 19.5832 17.7902 19.5832 13.6481C19.5832 9.50596 16.142 6.06482 11.9999 6.06482C7.85778 6.06482 4.41656 9.50596 4.41656 13.6481C4.41656 17.7902 7.85778 21.2424 11.9999 21.2424Z" fill="currentColor"/>
                 </svg>
               </div>
-              <h1 className="text-3xl font-medium text-zinc-200">
-                Good evening, {userName}
+                <h1 className="text-3xl font-medium text-zinc-200 mb-3">
+                  Start a New Conversation
               </h1>
+                <p className="text-zinc-400 max-w-md mb-6">
+                  Ask me anything - from creative writing to coding help, research questions, or just casual conversation.
+                </p>
+                <div className="flex gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => inputRef.current?.focus()}
+                    className="text-zinc-300 border-zinc-700 hover:bg-zinc-800"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Start Typing
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowKeyboardShortcuts(true)}
+                    className="text-zinc-300 border-zinc-700 hover:bg-zinc-800"
+                  >
+                    <Keyboard className="w-4 h-4 mr-2" />
+                    View Shortcuts
+                  </Button>
+                </div>
             </div>
           ) : (
-            <div className="max-w-3xl mx-auto p-4 space-y-6">
+              <div className="max-w-3xl mx-auto py-8 mb-[120px]">
+                <div className="space-y-6">
               {messages.map((message, index) => (
                 <div 
                   key={index}
@@ -552,10 +516,16 @@ export function ChatInterface() {
                     )}
                   </div>
 
-                  <div className={cn(
-                    "flex-1 px-4 py-2 rounded-lg",
+                      <div 
+                        className={cn(
+                          "flex-1 px-4 py-2 rounded-lg overflow-hidden text-left",
                     message.role === 'user' ? "bg-blue-600/20" : "bg-zinc-800"
-                  )}>
+                        )}
+                        style={{
+                          maxWidth: 'calc(100% - 4rem)',
+                          wordBreak: 'break-word'
+                        }}
+                      >
                     {Array.isArray(message.content) ? (
                       message.content.map((item, i) => (
                         <div key={i}>
@@ -571,6 +541,7 @@ export function ChatInterface() {
                                 src={item.content} 
                                 alt="Generated" 
                                 className="rounded-lg max-w-full h-auto" 
+                                    loading="lazy"
                               />
                             </div>
                           )}
@@ -592,13 +563,13 @@ export function ChatInterface() {
 
               {isGenerating && (
                 <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center">
+                      <div className="w-8 h-8 rounded-full bg-zinc-700 flex items-center justify-center shrink-0">
                     <svg className="w-5 h-5 text-zinc-100" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M12.0002 11.2424C14.3381 11.2424 16.2426 9.33785 16.2426 7C16.2426 4.66215 14.3381 2.75757 12.0002 2.75757C9.6623 2.75757 7.75772 4.66215 7.75772 7C7.75772 9.33785 9.6623 11.2424 12.0002 11.2424Z" fill="currentColor"/>
                       <path d="M11.9999 21.2424C16.142 21.2424 19.5832 17.7902 19.5832 13.6481C19.5832 9.50596 16.142 6.06482 11.9999 6.06482C7.85778 6.06482 4.41656 9.50596 4.41656 13.6481C4.41656 17.7902 7.85778 21.2424 11.9999 21.2424Z" fill="currentColor"/>
                     </svg>
                   </div>
-                  <div className="flex-1 px-4 py-2 rounded-lg bg-zinc-800">
+                      <div className="px-4 py-2 rounded-lg bg-zinc-800 w-auto">
                     <div className="flex gap-2">
                       <div className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                       <div className="w-2 h-2 bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
@@ -607,17 +578,22 @@ export function ChatInterface() {
                   </div>
                 </div>
               )}
-              
-              <div ref={messagesEndRef} className="h-px" />
+                </div>
+                
+                <div 
+                  ref={messagesEndRef} 
+                  className="h-px w-full" 
+                  aria-hidden="true"
+                />
             </div>
           )}
         </div>
       </main>
 
-      <div className="shrink-0 border-t border-zinc-700/50 bg-zinc-900 px-4 py-4">
+        <footer className="shrink-0 border-t border-zinc-700/50 bg-zinc-900 px-4 py-4 fixed bottom-0 right-0 left-[240px]">
+          <div className="max-w-3xl mx-auto">
         <ChatInput 
           onSubmit={handleSubmit}
-          isGenerating={isGenerating}
           ref={inputRef}
         />
         <p className="text-xs text-zinc-500 text-center mt-2">
@@ -626,8 +602,106 @@ export function ChatInterface() {
           <Link href="/terms" className="underline hover:text-zinc-400 mx-1">Terms of service</Link>
         </p>
       </div>
+        </footer>
 
       {showKeyboardShortcuts && <KeyboardShortcutsModal />}
+      </div>
     </div>
   );
 } 
+
+<style jsx global>{`
+  .prose {
+    max-width: none;
+    width: 100%;
+  }
+  
+  .prose p {
+    margin-top: 1em;
+    margin-bottom: 1em;
+    line-height: 1.6;
+  }
+
+  .prose table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 1.5rem 0;
+    background: rgb(24 24 27);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .prose thead {
+    background: rgb(39 39 42);
+  }
+
+  .prose th {
+    text-transform: none;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: rgb(244 244 245);
+    padding: 12px 24px;
+    text-align: left;
+    border-bottom: 1px solid rgba(63, 63, 70, 0.5);
+    white-space: nowrap;
+  }
+
+  .prose td {
+    padding: 16px 24px;
+    color: rgb(228 228 231);
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    border-bottom: 1px solid rgba(63, 63, 70, 0.3);
+  }
+
+  .prose tr:last-child td {
+    border-bottom: none;
+  }
+
+  .prose tr:hover td {
+    background: rgba(39, 39, 42, 0.5);
+  }
+
+  .table-wrapper {
+    margin: 1.5rem 0;
+    overflow-x: auto;
+    border-radius: 8px;
+    background: rgb(24 24 27);
+  }
+
+  .table-wrapper table {
+    margin: 0;
+    min-width: 100%;
+  }
+
+  .prose pre {
+    background: rgba(24, 24, 27, 0.7);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+  }
+
+  .prose code {
+    background: rgba(24, 24, 27, 0.7);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.875em;
+  }
+
+  .prose ul, .prose ol {
+    padding-left: 1.5em;
+    margin: 1em 0;
+  }
+
+  .prose li {
+    margin: 0.5em 0;
+  }
+
+  .prose blockquote {
+    border-left: 3px solid #3b82f6;
+    padding-left: 1em;
+    margin: 1em 0;
+    color: #94a3b8;
+  }
+`}</style> 

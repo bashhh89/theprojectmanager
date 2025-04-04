@@ -5,6 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { signIn } from "@/lib/authUtils";
 import { EyeIcon, EyeOffIcon, LogInIcon, KeyIcon, MailIcon } from "lucide-react";
+import { GoogleIcon } from '@/components/ui/icons';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 /**
  * LoginForm Component
@@ -21,98 +26,102 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
 
   // Handle form submission
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError(null);
+    setIsLoading(true);
 
     try {
-      // Attempt to sign in
-      const { error } = await signIn(email, password);
-
-      if (error) {
-        throw error;
+      const { data, error: signInError } = await signIn(email, password);
+      
+      if (signInError) {
+        setError(signInError.message || 'Login failed');
+        toast.error('Login failed', {
+          description: signInError.message || 'Please check your credentials and try again',
+        });
+        return;
       }
 
-      // Redirect to dashboard page after successful login
-      router.push("/dashboard");
-      router.refresh();
-    } catch (error: any) {
-      console.error("Login error:", error);
-      setError(error.message || "Failed to login. Please check your credentials.");
+      if (data && data.user) {
+        toast.success('Login successful', {
+          description: 'Redirecting to dashboard...',
+        });
+        
+        // Ensure session is properly saved before redirecting
+        setTimeout(() => {
+          // Force refresh to ensure session is loaded
+          window.location.href = '/dashboard';
+        }, 500);
+      }
+    } catch (err: any) {
+      setError(err.message || 'An unexpected error occurred');
+      toast.error('Login error', {
+        description: err.message || 'Please try again later',
+      });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Add event listener for auth state changes
+  if (typeof window !== 'undefined') {
+    window.addEventListener('authStateChange', (e: any) => {
+      if (e.detail?.user && e.detail?.session) {
+        router.push('/dashboard');
+      }
+    });
   }
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <div className="bg-zinc-800 backdrop-blur-lg rounded-xl border border-zinc-700 shadow-xl p-8 space-y-6">
-        <div className="text-center mb-8">
-          <div className="h-16 w-16 mx-auto bg-gradient-to-r from-zinc-600 to-zinc-800 rounded-full flex items-center justify-center mb-4 border border-zinc-600">
-            <LogInIcon className="text-white h-8 w-8" />
-          </div>
-          <h2 className="text-2xl font-bold text-white">
-            Welcome Back
-          </h2>
-          <p className="text-zinc-400 mt-2 text-sm">
-            Sign in to access your projects and agents
-          </p>
-        </div>
-
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-lg text-sm" role="alert">
-            <span className="flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              {error}
-            </span>
-        </div>
-      )}
-
+    <div className="mx-auto max-w-md space-y-6">
+      <div className="space-y-2 text-center">
+        <h1 className="text-3xl font-bold">Welcome back</h1>
+        <p className="text-gray-500 dark:text-gray-400">Enter your credentials to sign in</p>
+      </div>
+      <div className="grid gap-6">
         <form onSubmit={handleSubmit} className="space-y-5">
+          {error && <div className="text-sm text-red-500 dark:text-red-400">{error}</div>}
           <div className="space-y-2">
             <label htmlFor="email" className="block text-sm font-medium text-zinc-300">
               Email Address
-          </label>
+            </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <MailIcon className="h-5 w-5 text-zinc-400" />
               </div>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="block w-full pl-10 pr-3 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
                 placeholder="name@example.com"
-          />
+              />
             </div>
-        </div>
+          </div>
 
           <div className="space-y-2">
             <label htmlFor="password" className="block text-sm font-medium text-zinc-300">
-            Password
-          </label>
+              Password
+            </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <KeyIcon className="h-5 w-5 text-zinc-400" />
               </div>
-          <input
-            id="password"
-            name="password"
+              <input
+                id="password"
+                name="password"
                 type={showPassword ? "text" : "password"}
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="block w-full pl-10 pr-10 py-3 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all duration-200"
-            placeholder="••••••••"
-          />
+                placeholder="••••••••"
+              />
               <button
                 type="button"
                 className="absolute inset-y-0 right-0 pr-3 flex items-center"
@@ -125,17 +134,16 @@ export default function LoginForm() {
                 )}
               </button>
             </div>
-            {/* Restore Forgot Password link */}
             <div className="flex justify-end">
               <a href="/forgot-password" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
                 Forgot password?
               </a>
             </div>
-        </div>
+          </div>
 
-        <button
-          type="submit"
-          disabled={isLoading}
+          <button
+            type="submit"
+            disabled={isLoading}
             className="w-full flex justify-center items-center gap-2 py-3 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-zinc-800 disabled:opacity-50 transition-all duration-200"
           >
             {isLoading ? (
@@ -149,11 +157,11 @@ export default function LoginForm() {
             ) : (
               <>
                 <LogInIcon className="h-4 w-4" />
-                Sign In
+                Sign in
               </>
             )}
-        </button>
-      </form>
+          </button>
+        </form>
 
         <div className="relative py-3">
           <div className="absolute inset-0 flex items-center">

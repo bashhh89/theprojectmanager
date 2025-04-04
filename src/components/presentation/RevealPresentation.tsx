@@ -22,21 +22,23 @@ import '../../../public/reveal.js-assets/pdf.css';
 // REMOVE Notes CSS import
 // import 'reveal.js/plugin/notes/notes.css';
 
+import type { SlideData } from '@/store/presentationStore';
+
+// Add ClientMetadata interface
+interface ClientMetadata {
+  companyName?: string;
+  industry?: string;
+  website?: string;
+  linkedInUrl?: string;
+  recipientName?: string;
+  recipientRole?: string;
+  primaryGoal?: string;
+}
+
 export interface RevealPresentationProps {
   markdown?: string;
-  slides?: Array<{
-    title: string;
-    content: string;
-    layout?: string;
-    image?: string;
-    imagePrompt?: string;
-    backgroundColor?: string;
-    textColor?: string;
-    accentColor?: string;
-    fontFamily?: string;
-    headingFont?: string;
-  }>;
-  theme?: string; 
+  slides?: SlideData[];
+  theme?: 'black' | 'white' | 'league' | 'beige' | 'sky' | 'night' | 'serif' | 'simple' | 'solarized' | 'moon' | 'dracula' | 'custom';
   customTheme?: {
     backgroundColor?: string;
     color?: string;
@@ -46,10 +48,11 @@ export interface RevealPresentationProps {
     fontFamily?: string;
     headingFont?: string;
   };
-  onReady?: () => void;
   style?: React.CSSProperties;
+  onReady?: () => void;
   debug?: boolean;
   onExportPDF?: () => void;
+  clientMetadata?: ClientMetadata; // Add client metadata to props
 }
 
 // Helper to split markdown into slides
@@ -64,12 +67,14 @@ const imageSuggestionRegex = /<!--\s*Image suggestion:\s*(.*?)\s*-->/i;
 
 type SlideLayout = 'background' | 'split-left' | 'split-right' | 'text-only';
 
-interface SlideData {
-  html: string;
+interface SlideDataInternal {
+  html: string; // Changed name to avoid confusion with prop
   layout: SlideLayout;
   imagePrompt?: string | null;
   imageUrl?: string | null;
   imageLoading?: boolean;
+  style?: string; // Add style property to store presentation style
+  // Keep style properties
   backgroundColor?: string;
   textColor?: string;
   accentColor?: string;
@@ -82,23 +87,26 @@ type RenderMode = 'loading' | 'reveal' | 'fallback' | 'error';
 
 const RevealPresentation: React.FC<RevealPresentationProps> = ({ 
   markdown = '', 
-  slides = [],
+  slides = [], // Use the prop name
   theme = 'black', 
   customTheme,
   onReady, 
   style,
   debug = false,
-  onExportPDF
+  onExportPDF,
+  clientMetadata // Add client metadata parameter
 }) => {
+  // Force debug to false to hide the debug panel
+  const actualDebug = false; // Override the debug prop
   const [isMounted, setIsMounted] = useState(false);
-  const [slidesData, setSlidesData] = useState<SlideData[]>([]);
+  const [slidesData, setSlidesData] = useState<SlideDataInternal[]>([]);
   const [isFullyProcessed, setIsFullyProcessed] = useState(false);
   const [renderMode, setRenderMode] = useState<RenderMode>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
   
   const revealDivRef = useRef<HTMLDivElement>(null);
-  const deckRef = useRef<any>(null);
+  const deckRef = useRef<any>(null); // Use any for deck ref as before
   const themeLinkRef = useRef<HTMLLinkElement | null>(null);
   const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
   const emergencyTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -106,28 +114,21 @@ const RevealPresentation: React.FC<RevealPresentationProps> = ({
   // Helper to add debug info
   const addDebug = (message: string) => {
     console.log(`[RevealPresentation] ${message}`);
-    if (debug) {
+    if (actualDebug) {
       setDebugInfo(prev => [...prev, `${new Date().toISOString().slice(11, 19)} - ${message}`]);
     }
   };
 
   useEffect(() => { setIsMounted(true); }, []);
 
-  // Emergency fallback timer - force to fallback mode after 10 seconds no matter what
+  // Emergency fallback timer
   useEffect(() => {
     if (!isMounted) return;
     
-    addDebug("Setting emergency fallback timer");
-    emergencyTimerRef.current = setTimeout(() => {
-      if (renderMode === 'loading') {
-        addDebug("EMERGENCY FALLBACK: Still loading after timeout, switching to fallback mode");
-        setRenderMode('fallback');
-        if (onReady) {
-          addDebug("Calling onReady from emergency fallback");
-          onReady();
-        }
-      }
-    }, 10000);
+    addDebug("Initialization started - waiting for Reveal.js");
+    
+    // Removing the emergency timer that forces fallback mode
+    // Let Reveal.js initialization complete naturally
     
     return () => {
       if (emergencyTimerRef.current) {
@@ -138,10 +139,17 @@ const RevealPresentation: React.FC<RevealPresentationProps> = ({
 
   // Effect to process slides prop or markdown, layouts, and fetch images
   useEffect(() => {
-    if (!markdown && slides.length === 0) {
+    if (!isMounted) return; // Wait until mounted
+    
+    // Prioritize slides prop if available
+    const useSlidesProp = slides && slides.length > 0;
+    const sourceData = useSlidesProp ? slides : (markdown ? splitMarkdownIntoSlides(markdown) : []);
+
+    if (sourceData.length === 0) {
+      addDebug("No source data (markdown or slides prop) provided. Resetting.");
       setSlidesData([]);
       setIsFullyProcessed(false);
-      setRenderMode('loading');
+      setRenderMode('loading'); // Or maybe an 'empty' state?
       setErrorMessage(null);
       return;
     }
@@ -150,288 +158,206 @@ const RevealPresentation: React.FC<RevealPresentationProps> = ({
     setIsFullyProcessed(false);
     setRenderMode('loading');
     setErrorMessage(null);
+    addDebug(`Processing ${sourceData.length} slides from ${useSlidesProp ? 'props' : 'markdown'}.`);
     
-    // --- START Processing SLIDES PROP ---
-    if (slides.length > 0) {
-      addDebug(`Processing ${slides.length} slides from props`);
+    const processSourceData = async () => {
+      setSlidesData([]); // Clear previous data
       
-      // Initial processing: structure data, identify prompts
-      const initialProcessedSlides = slides.map((slide, index) => {
-        const layout = (slide.layout || 'default') as SlideLayout;
-        const html = slide.content || '<p></p>'; 
-        const imagePrompt = slide.layout !== 'text-only' ? (slide.imagePrompt || null) : null;
-        
-        return {
-          html,
-          layout,
-          imageUrl: slide.image || null,
-          imagePrompt: imagePrompt,
-          imageLoading: false, // Start with false, manage later if fetch needed
-          // Style properties
-          backgroundColor: slide.backgroundColor,
-          textColor: slide.textColor,
-          accentColor: slide.accentColor,
-          fontFamily: slide.fontFamily, 
-          headingFont: slide.headingFont
-        };
-      });
-      
-      setSlidesData(initialProcessedSlides); // Set initial structure (no images yet)
-      addDebug(`Processed initial ${initialProcessedSlides.length} slides from props structure.`);
-      
-      // --- Fetch images based on prompts ---
-      const fetchImagesForSlides = async () => {
-          const imageRequests = initialProcessedSlides
-            .map((slide, index) => slide.imagePrompt && !slide.imageUrl ? { index, prompt: slide.imagePrompt } : null)
-            .filter(Boolean) as { index: number; prompt: string }[];
-          
-          if (imageRequests.length === 0) {
-              addDebug("No images to fetch based on prompts.");
-              setIsFullyProcessed(true); // All done if no images needed
-              return;
-          }
-          
-          addDebug(`Preparing to fetch ${imageRequests.length} images based on prompts...`);
-          const fetchedImageUrls: { [index: number]: string | null } = {}; // Store results here
-          
-          // Use same batch fetching logic
-          const batchSize = 3;
-          for (let i = 0; i < imageRequests.length; i += batchSize) {
-            const batch = imageRequests.slice(i, i + batchSize);
-            addDebug(`Processing image batch ${i/batchSize + 1} (${batch.length} images)`);
-            
-            const results = await Promise.allSettled(
-              batch.map(async (req) => {
-                try {
-                  addDebug(`Fetching image for slide ${req.index+1} (prompt: \"${req.prompt.substring(0, 30)}...\")`);
-                  const response = await fetch('/api/generate-image', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: req.prompt })
-                  });
-                  if (!response.ok) throw new Error(`API Error: ${response.status}`);
-                  const data = await response.json();
-                  if (data.imageUrl && !isCancelled) {
-                    addDebug(`✓ Image received for slide ${req.index+1}`);
-                    // Store successful URL temporarily
-                    return { index: req.index, url: data.imageUrl };
-                  } else {
-                    throw new Error('No image URL in response');
-                  }
-                } catch (imgError) {
-                  addDebug(`✗ Failed to fetch image for slide ${req.index+1}: ${imgError}`);
-                  // Try fallback immediately if fetch fails
-                   try {
-                      const placeholderUrl = `https://picsum.photos/seed/slide${req.index}/800/600`;
-                      addDebug(`Using placeholder image for slide ${req.index+1}`);
-                      return { index: req.index, url: placeholderUrl }; // Store fallback URL
-                    } catch (fallbackError) {
-                      addDebug(`Fallback failed: ${fallbackError}`);
-                       return { index: req.index, url: null }; // Indicate failure
-                    }
-                }
-              })
-            );
-            
-            // Process results for the completed batch
-             results.forEach(result => {
-                if (result.status === 'fulfilled' && result.value) {
-                    fetchedImageUrls[result.value.index] = result.value.url;
-                }
-                // Optionally handle rejected promises if needed, though catch block does fallback
-            });
-            
-            if (i + batchSize < imageRequests.length && !isCancelled) {
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-          addDebug("All image fetching based on prompts completed.");
-          
-          if (!isCancelled) {
-            // Update slidesData ONCE with all fetched URLs
-            setSlidesData(prevData =>
-              prevData.map((slide, index) => {
-                if (fetchedImageUrls.hasOwnProperty(index)) {
-                   return { ...slide, imageUrl: fetchedImageUrls[index], imageLoading: false };
-                }
-                return { ...slide, imageLoading: false }; // Ensure loading is false
-              })
-            );
-            setIsFullyProcessed(true); // Mark all processing complete AFTER state update
-          }
-      };
+      try {
+        const initialDataPromises: Promise<Omit<SlideDataInternal, 'imageUrl' | 'imageLoading'> & { originalIndex: number }>[] = [];
+        const defaultLayouts: SlideLayout[] = ['background', 'split-left', 'split-right', 'text-only'];
 
-      fetchImagesForSlides(); // Start fetching images
-      
-      // Fallback timer (keep for Reveal init issues)
-      fallbackTimerRef.current = setTimeout(() => {
-         if (!isCancelled && renderMode === 'loading') { // Check !isCancelled
-          addDebug("Fallback timer triggered - switching to fallback mode");
-          setRenderMode('fallback');
-          if (onReady) { onReady(); }
-        }
-      }, 15000); // Timeout remains
-      
-      return () => { isCancelled = true; if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current); };
-    }
-    // --- END Processing SLIDES PROP ---
+        // --- Pass 1: Parse content, layout, and identify image prompts --- 
+        for (let i = 0; i < sourceData.length; i++) {
+          let slideContent: string;
+          let explicitLayout: string | undefined;
+          let explicitImagePrompt: string | undefined;
+          let initialImageUrl: string | undefined;
+          let styleProps: Partial<SlideDataInternal> = {};
 
-    // --- START Processing MARKDOWN PROP ---
-    if (markdown) { // Only process markdown if slides prop wasn't used
-      addDebug("Started processing markdown and images");
-      const processMarkdownAndImages = async () => {
-        setSlidesData([]); // Clear previous data
-        
-        try {
-          addDebug("Processing markdown, layout, and images...");
-          const rawSlides = splitMarkdownIntoSlides(markdown);
-          const initialDataPromises: Promise<Omit<SlideData, 'imageUrl' | 'imageLoading'>>[] = []; // Type adjustment
+          if (useSlidesProp) {
+            const slideProp = sourceData[i] as Exclude<RevealPresentationProps['slides'], undefined>[number];
+            slideContent = slideProp.content || '';
+            explicitLayout = slideProp.layout;
+            explicitImagePrompt = slideProp.imagePrompt;
+            initialImageUrl = slideProp.image;
+            // Capture style props
+            styleProps = {
+              backgroundColor: slideProp.backgroundColor,
+              textColor: slideProp.textColor,
+              accentColor: slideProp.accentColor,
+              fontFamily: slideProp.fontFamily,
+              headingFont: slideProp.headingFont
+            };
+          } else {
+            slideContent = sourceData[i] as string;
+          }
+
+          let slideMd = slideContent;
           
-          // Available layouts to cycle through if none specified
-          const defaultLayouts: SlideLayout[] = ['background', 'split-left', 'split-right', 'text-only'];
-          
-          // First pass: Parse markdown, layout, and identify image prompts
-          for (let i = 0; i < rawSlides.length; i++) {
-            let slideMd = rawSlides[i];
-            
-            // Extract Layout (or cycle through layouts if none specified)
-            let layout: SlideLayout = defaultLayouts[i % defaultLayouts.length]; // Default layout based on position
-            const layoutMatch = slideMd.match(layoutRegex);
-            if (layoutMatch && layoutMatch[1]) {
+          // Extract Layout
+          let layout: SlideLayout = defaultLayouts[i % defaultLayouts.length]; // Default layout
+          const layoutMatch = explicitLayout ? null : slideMd.match(layoutRegex);
+          if (explicitLayout && ['background', 'split-left', 'split-right', 'text-only'].includes(explicitLayout)) {
+              layout = explicitLayout as SlideLayout;
+          } else if (layoutMatch && layoutMatch[1]) {
               layout = layoutMatch[1].toLowerCase() as SlideLayout;
               slideMd = slideMd.replace(layoutRegex, '').trim(); 
             }
-            
-            addDebug(`Slide ${i+1} layout: ${layout}`);
+          // addDebug(`Slide ${i+1} layout: ${layout}`);
 
             // Extract Image Prompt (only if layout is not text-only)
             let imagePrompt: string | null = null;
-            
             if (layout !== 'text-only') {
-              const imageMatch = slideMd.match(imageSuggestionRegex);
-              
-              if (imageMatch && imageMatch[1]) {
-                // Use explicit image suggestion if provided
+            const imageMatch = explicitImagePrompt ? null : slideMd.match(imageSuggestionRegex);
+            if (explicitImagePrompt) {
+                imagePrompt = explicitImagePrompt;
+            } else if (imageMatch && imageMatch[1]) {
                 imagePrompt = imageMatch[1].trim();
                 slideMd = slideMd.replace(imageSuggestionRegex, '').trim();
               } else {
                 // Auto-generate image prompt from slide content if none provided
-                // Extract first few words from content for the image prompt
-                const contentWords = slideMd.replace(/#/g, '').trim().split(' ');
-                const autoPrompt = contentWords.slice(0, Math.min(8, contentWords.length)).join(' ');
-                imagePrompt = `${autoPrompt}, high quality, professional presentation visual`;
-                addDebug(`Auto-generated image prompt for slide ${i+1}: "${autoPrompt.substring(0, 30)}..."`);
-              }
+                const titleMatch = slideMd.match(/^#\s+(.+)$/m);
+                const title = titleMatch ? titleMatch[1].trim() : slideMd.split('\n')[0].replace(/^#+\s*/, '');
+                
+                // Create more specific, high-quality image prompts based on layout
+                let basePrompt = `${title}, professional, high quality`;
+                
+                if (layout === 'background') {
+                  imagePrompt = `${basePrompt}, soft gradient background, subtle texture, elegant, minimalist, presentation background, corporate style, 16:9 aspect ratio, 4k quality`;
+                } else if (layout === 'split-left') {
+                  imagePrompt = `${basePrompt}, right-aligned image, clean professional illustration, corporate presentation visual, perfect lighting, detailed, photorealistic, 16:9 aspect ratio`;
+                } else if (layout === 'split-right') {
+                  imagePrompt = `${basePrompt}, left-aligned image, clean professional illustration, corporate presentation visual, perfect lighting, detailed, photorealistic, 16:9 aspect ratio`;
+                } else {
+                  imagePrompt = `${basePrompt}, centered composition, professional presentation visual, clean modern design, detailed illustration, 16:9 aspect ratio`;
+                }
             }
+          }
 
-            // Parse remaining Markdown to HTML
+          // Parse remaining Markdown to HTML (MUST happen here)
             const htmlPromise = Promise.resolve(marked.parse(slideMd))
-              .then(html => ({
+            .then(html => {
+              // Debug the HTML conversion if in debug mode
+              if (actualDebug) {
+                addDebug(`Processed slide ${i+1} HTML (first 50 chars): ${html.substring(0, 50)}...`);
+              }
+              return {
                 html,
                 layout,
                 imagePrompt,
-                // No imageLoading/imageUrl here yet
-              }));
+                originalIndex: i,
+                style: useSlidesProp ? ((sourceData[i] as any).style || '') : '', // Capture style from slide prop
+                ...styleProps // Spread style props here
+              };
+            })
+            .catch(err => {
+              addDebug(`Error parsing markdown for slide ${i+1}: ${err.message}`);
+              // Fallback to basic HTML if parsing fails
+              return {
+                html: `<h1>${slideContent.substring(0, 30)}...</h1><p>Error processing slide content</p>`,
+                layout,
+                imagePrompt,
+                originalIndex: i,
+                style: useSlidesProp ? ((sourceData[i] as any).style || '') : '', // Capture style from slide prop
+                ...styleProps
+              };
+            });
             initialDataPromises.push(htmlPromise);
           }
 
-          const initialData = await Promise.all(initialDataPromises);
+        const initialDataResults = await Promise.all(initialDataPromises);
           if (isCancelled) return;
 
-          // Set initial slide data structure (no images)
-          const initialSlides = initialData.map(data => ({
+        // Set initial slide data structure (HTML content, layout, prompt, NO images yet)
+        const initialSlides = initialDataResults.map(data => ({
               ...data,
-              imageUrl: null, // Initialize imageUrl
-              imageLoading: false // Initialize loading state
+            imageUrl: useSlidesProp ? (slides[data.originalIndex]?.image || null) : null, // Use pre-existing image if available from prop
+            imageLoading: false
           }));
           setSlidesData(initialSlides);
-          addDebug(`Processed ${initialSlides.length} initial slides structure from markdown`);
+        addDebug(`Processed ${initialSlides.length} initial slides structure.`);
 
-          // Second pass: Fetch images for all slides that need them
+        // --- Pass 2: Fetch images ONLY if needed --- 
           const imageRequests = initialSlides
-            .map((slide, index) => slide.imagePrompt ? { index, prompt: slide.imagePrompt } : null)
+          .map((slide, index) => (!slide.imageUrl && slide.imagePrompt) ? { index, prompt: slide.imagePrompt } : null)
             .filter(Boolean) as { index: number; prompt: string }[];
           
-          addDebug(`Preparing to fetch ${imageRequests.length} images for markdown slides`);
-          const fetchedImageUrls: { [index: number]: string | null } = {}; // Store results
+        if (imageRequests.length === 0) {
+            addDebug("No images need to be fetched.");
+            setIsFullyProcessed(true); // All processing done
+            return; // Skip image fetching
+        }
           
-          // Process image requests in smaller batches
+        addDebug(`Preparing to fetch ${imageRequests.length} images`);
+        const fetchedImageUrls: { [index: number]: string | null } = {};
+        
           const batchSize = 3;
           for (let i = 0; i < imageRequests.length; i += batchSize) {
             const batch = imageRequests.slice(i, i + batchSize);
-            addDebug(`Processing image batch ${i/batchSize + 1} (${batch.length} images)`);
+          addDebug(`Processing image batch ${Math.floor(i/batchSize) + 1} (${batch.length} images)`);
             
             const results = await Promise.allSettled(
               batch.map(async (req) => {
                  try {
-                  addDebug(`Fetching image for slide ${req.index+1} with prompt: "${req.prompt.substring(0, 30)}..."`);
+                addDebug(`Fetching image for slide ${req.index+1} (prompt: "${req.prompt.substring(0, 30)}...")`);
+                
+                // Get the slide's layout to use for style determination
+                const slideLayout = slidesData[req.index]?.layout || 'text-only';
+                
                   const response = await fetch('/api/generate-image', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: req.prompt })
-                  });
-                  if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                  body: JSON.stringify({ 
+                    prompt: req.prompt,
+                    options: {
+                      aspectRatio: '16:9',
+                      quality: 'hd',
+                      style: slideLayout === 'background' ? 'abstract' : 'photorealistic'
+                    },
+                    clientMetadata // Pass client metadata to the API
+                  })
+                });
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
                   const data = await response.json();
                   if (data.imageUrl && !isCancelled) {
                     addDebug(`✓ Image received for slide ${req.index+1}`);
-                     return { index: req.index, url: data.imageUrl }; // Store success
+                  return { index: req.index, url: data.imageUrl };
                   } else {
                     throw new Error('No image URL in response');
                   }
                 } catch (imgError) {
                   addDebug(`✗ Failed to fetch image for slide ${req.index+1}: ${imgError}`);
-                   try {
-                     // Generate a placeholder image URL based on the slide number
                       const placeholderUrl = `https://picsum.photos/seed/slide${req.index}/800/600`;
                       addDebug(`Using placeholder image for slide ${req.index+1}`);
-                      return { index: req.index, url: placeholderUrl }; // Store fallback
-                   } catch (fallbackError) {
-                     addDebug(`Could not set fallback image: ${fallbackError}`);
-                     return { index: req.index, url: null }; // Indicate failure
-                   }
+                return { index: req.index, url: placeholderUrl };
                 }
               })
             );
             
-            // Process results for the completed batch
              results.forEach(result => {
                 if (result.status === 'fulfilled' && result.value) {
                     fetchedImageUrls[result.value.index] = result.value.url;
                 }
-                // Optionally handle rejected promises
             });
             
-            // Small delay between batches
             if (i + batchSize < imageRequests.length && !isCancelled) {
-              await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between batches
             }
           }
-
-          addDebug("All image processing completed for markdown slides");
+        addDebug("All image fetching completed.");
 
           if (!isCancelled) {
              // Update slidesData ONCE with all fetched URLs
              setSlidesData(prevData =>
                prevData.map((slide, index) => {
                  if (fetchedImageUrls.hasOwnProperty(index)) {
-                   return { ...slide, imageUrl: fetchedImageUrls[index], imageLoading: false };
-                 }
-                  return { ...slide, imageLoading: false }; // Ensure loading is false
-               })
-             );
-             setIsFullyProcessed(true); // Mark all processing complete AFTER state update
-
-            // Fallback timer (keep for Reveal init issues)
-            fallbackTimerRef.current = setTimeout(() => {
-              if (!isCancelled && renderMode === 'loading') { // Check !isCancelled
-                addDebug("FALLBACK TIMER: Switching to fallback mode");
-                setRenderMode('fallback');
-                if (onReady) {
-                  addDebug("Calling onReady from fallback timer");
-                  onReady();
-                }
+                 return { ...slide, imageUrl: fetchedImageUrls[index] };
               }
-            }, 5000);
+              return slide;
+            })
+          );
+          setIsFullyProcessed(true); // Mark all processing complete
           }
 
         } catch (error) {
@@ -439,887 +365,646 @@ const RevealPresentation: React.FC<RevealPresentationProps> = ({
            addDebug(`Failed processing: ${errorMsg}`);
            setErrorMessage(`Error processing presentation: ${errorMsg}`);
            if (!isCancelled) {
-              setSlidesData([{ html: `<section>Error processing presentation: ${errorMsg}</section>`, layout: 'text-only' }]);
-              setIsFullyProcessed(true);
+            setSlidesData([{ html: `<section><h1>Error</h1><p>Error processing presentation: ${errorMsg}</p></section>`, layout: 'text-only' }]);
+            setIsFullyProcessed(true); // Mark as processed even on error to show error slide
               setRenderMode('error');
            }
         }
       };
 
-      processMarkdownAndImages();
+    processSourceData();
+
+    // Remove fallback timer - don't force fallback mode
+    // Let Reveal.js initialize properly
 
       return () => {
         isCancelled = true;
-        if (fallbackTimerRef.current) {
-          clearTimeout(fallbackTimerRef.current);
-          fallbackTimerRef.current = null;
-        }
-      };
-    }
-    // --- END Processing MARKDOWN PROP ---
-
-    // Add else case if neither markdown nor slides provided
-    else {
-        addDebug("No markdown or slides prop provided. Resetting state.");
-        setSlidesData([]);
-        setIsFullyProcessed(false); // Not processed
-        setRenderMode('loading'); // Or perhaps an 'empty' state?
-        setErrorMessage(null);
-    }
-
-  }, [markdown, slides, isMounted]); // Added isMounted dependency
+      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    };
+  // Re-evaluate when source data or mount status changes
+  }, [markdown, slides, isMounted, clientMetadata]); 
 
   // Effect to manage theme CSS link
   useEffect(() => {
     const head = document.head;
-    
-    // Remove any existing theme link
     if (themeLinkRef.current) {
-      head.removeChild(themeLinkRef.current);
+      try { head.removeChild(themeLinkRef.current); } catch(e) {}
       themeLinkRef.current = null;
     }
     
-    // If using a custom theme, don't add a theme CSS file
     if (theme === 'custom' && customTheme) {
-      addDebug("Using custom theme configuration");
+      addDebug("Using custom theme configuration (no CSS link)");
       return;
     }
     
-    // Create new theme link
     const themeLink = document.createElement('link');
     themeLink.rel = 'stylesheet';
     themeLink.href = `/reveal.js-assets/theme/${theme}.css`;
     themeLink.id = 'reveal-theme';
-    
-    // Add to document head
     head.appendChild(themeLink);
     themeLinkRef.current = themeLink;
-    
-    addDebug(`Applied theme: ${theme}`);
+    addDebug(`Applied theme CSS: ${theme}.css`);
     
     return () => {
-      // Remove theme link on cleanup
       if (themeLinkRef.current) {
-        try {
-          head.removeChild(themeLinkRef.current);
-        } catch (e) {
-          console.error("Error removing theme link:", e);
-        }
+        try { head.removeChild(themeLinkRef.current); } catch (e) {}
         themeLinkRef.current = null;
       }
     };
   }, [theme, customTheme]);
 
-  // Custom CSS for the theme (if using customTheme)
+  // Custom CSS for the theme
   const customCSS = React.useMemo(() => {
     if (theme !== 'custom' || !customTheme) return null;
-    
+    addDebug("Generating custom theme CSS styles");
     return `
-      .reveal {
-        font-family: ${customTheme.fontFamily || 'sans-serif'};
-        color: ${customTheme.color || '#222'};
-      }
-      
       .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 {
         font-family: ${customTheme.headingFont || customTheme.fontFamily || 'sans-serif'};
         color: ${customTheme.primaryColor || customTheme.color || '#222'};
+        margin-bottom: 0.5em;
+        text-transform: none;
+        letter-spacing: normal;
+        text-shadow: none;
       }
       
-      .reveal .slides {
-        background-color: ${customTheme.backgroundColor || '#fff'};
+      .reveal {
+        font-family: ${customTheme.fontFamily || 'sans-serif'};
+        color: ${customTheme.color || '#222'};
+        font-size: 36px;
       }
       
-      .reveal a {
-        color: ${customTheme.accentColor || '#00008B'};
+      .reveal p {
+        font-family: ${customTheme.fontFamily || 'sans-serif'};
+        line-height: 1.4;
+        margin-bottom: 1em;
       }
       
-      .reveal .controls button {
-        color: ${customTheme.secondaryColor || customTheme.primaryColor || '#555'};
+      .reveal ul, .reveal ol {
+        font-family: ${customTheme.fontFamily || 'sans-serif'};
       }
     `;
   }, [theme, customTheme]);
 
-  // Add CSS to dynamically adjust text size based on content amount
+  // Effect to initialize Reveal.js ONCE data is processed
   useEffect(() => {
     if (!isMounted) return;
     
-    // Add custom CSS to handle text overflow and scaling
-    const style = document.createElement('style');
-    style.textContent = `
-      /* Base presentation styling */
-      .reveal, .reveal .slides, .reveal .slides section {
-        visibility: visible !important;
-        display: block !important;
-      }
-      
-      /* Make sure controls are visible */
-      .reveal .controls {
-        visibility: visible !important;
-        opacity: 1 !important;
-        pointer-events: auto !important;
-      }
-      
-      /* Auto-scale text in split layouts */
-      .reveal .layout-split-left .content-container,
-      .reveal .layout-split-right .content-container {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        height: 100%;
-        width: 100%;
-      }
-      
-      /* Prevent overflow with auto-scaling text */
-      .reveal .slides section {
-        overflow: hidden !important;
-      }
-      
-      /* Ensure content fits within the slide */
-      .reveal .slides section .content-container {
-        overflow: hidden !important;
-        height: 100%;
-      }
-      
-      /* Add specific styles for better text readability */
-      .reveal .layout-split-left .content-container h1,
-      .reveal .layout-split-right .content-container h1 {
-        font-size: 2.5em;
-        margin-bottom: 0.5em;
-      }
-      
-      .reveal .layout-split-left .content-container h2,
-      .reveal .layout-split-right .content-container h2 {
-        font-size: 1.8em;
-        margin-bottom: 0.4em;
-      }
-      
-      .reveal .layout-split-left .content-container p,
-      .reveal .layout-split-right .content-container p {
-        font-size: 1.2em;
-        line-height: 1.4;
-      }
-      
-      .reveal .layout-split-left .content-container ul,
-      .reveal .layout-split-right .content-container ul {
-        font-size: 1.1em;
-        line-height: 1.3;
-      }
-      
-      /* Better image handling for Reveal */
-      .reveal .image-container img {
-        object-fit: cover !important;
-        width: 100% !important;
-        height: 100% !important;
-      }
-      
-      /* Adjust reveal image container sizes for split layouts */
-      .reveal .layout-split-left .image-container,
-      .reveal .layout-split-right .image-container {
-        width: 45% !important;
-        height: 100% !important;
-      }
-      
-      .reveal .layout-split-left .image-container {
-        left: 0;
-        top: 0;
-      }
-      
-      .reveal .layout-split-right .image-container {
-        right: 0;
-        top: 0;
-      }
-      
-      /* Adjust content container for split layouts to accommodate larger images */
-      .reveal .layout-split-left .content-container {
-        right: 0;
-        top: 0;
-        width: 55% !important;
-      }
-      
-      .reveal .layout-split-right .content-container {
-        left: 0;
-        top: 0;
-        width: 55% !important;
-      }
-      
-      /* Custom controls for Reveal */
-      .custom-controls {
-        position: absolute;
-        bottom: 20px;
-        left: 0;
-        right: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 16px;
-        z-index: 100;
-        pointer-events: auto !important;
-      }
-      
-      .custom-controls button {
-        background: rgba(255, 255, 255, 0.2);
-        border: none;
-        color: white;
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-        cursor: pointer;
-        transition: background 0.3s;
-      }
-      
-      .custom-controls button:hover {
-        background: rgba(255, 255, 255, 0.4);
-      }
-      
-      /* Style for the PDF export button */
-      .custom-controls button.export-pdf-button {
-        width: auto;
-        padding: 0 12px;
-        font-size: 14px;
-        font-weight: bold;
-        background: rgba(255, 100, 100, 0.5);
-      }
-      
-      .custom-controls button.export-pdf-button:hover {
-        background: rgba(255, 100, 100, 0.7);
-      }
-      
-      /* Print styles for PDF export */
-      @media print {
-        body * {
-          visibility: hidden;
-        }
-        
-        .reveal, .reveal * {
-          visibility: visible;
-        }
-        
-        .reveal {
-          position: absolute;
-          left: 0;
-          top: 0;
-          width: 100%;
-          height: 100%;
-        }
-        
-        .reveal .custom-controls {
-          display: none !important;
-        }
-        
-        @page {
-          size: 1920px 1080px;
-          margin: 0;
-        }
-      }
-      
-      /* Fallback mode styles */
-      .fallback-slides {
-        background: #1c1c1c;
-        color: white;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        position: relative;
-      }
-      
-      .fallback-slide {
-        width: 100%;
-        height: 100%;
-        padding: 2rem;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        position: relative;
-      }
-      
-      .fallback-slide h1 {
-        font-size: 2.5rem;
-        margin-bottom: 1rem;
-      }
-      
-      .fallback-slide h2 {
-        font-size: 2rem;
-        margin-bottom: 0.8rem;
-      }
-      
-      .fallback-slide p {
-        font-size: 1.2rem;
-        line-height: 1.5;
-      }
-      
-      /* Better image handling for different layouts */
-      
-      /* Default image styling */
-      .fallback-slide img.slide-image {
-        max-width: 90%;
-        max-height: 60%;
-        object-fit: contain;
-        margin: 0 auto 2rem;
-      }
-      
-      /* Background layout */
-      .fallback-slide.background {
-        justify-content: center;
-        text-align: center;
-      }
-      
-      .fallback-slide.background img.slide-image {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        max-width: 100%;
-        max-height: 100%;
-        object-fit: cover;
-        opacity: 0.25;
-        z-index: 0;
-      }
-      
-      .fallback-slide.background .content {
-        position: relative;
-        z-index: 1;
-        width: 80%;
-        margin: 0 auto;
-        text-align: center;
-      }
-      
-      /* Split-left layout */
-      .fallback-slide.split-left {
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem;
-      }
-      
-      .fallback-slide.split-left img.slide-image {
-        width: 45%;
-        max-width: 45%;
-        max-height: 90%;
-        margin: 0;
-        order: -1;
-      }
-      
-      .fallback-slide.split-left .content {
-        width: 53%;
-        padding-left: 2%;
-      }
-      
-      /* Split-right layout */
-      .fallback-slide.split-right {
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem;
-      }
-      
-      .fallback-slide.split-right img.slide-image {
-        width: 45%;
-        max-width: 45%;
-        max-height: 90%;
-        margin: 0;
-      }
-      
-      .fallback-slide.split-right .content {
-        width: 53%;
-        padding-right: 2%;
-        order: -1;
-      }
-      
-      /* Text-only layout */
-      .fallback-slide.text-only .content {
-        width: 80%;
-        margin: 0 auto;
-        text-align: center;
-      }
-      
-      /* Image loading indicator */
-      .image-loading-indicator {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        z-index: 2;
-      }
-      
-      /* Layout indicator for debugging */
-      .layout-indicator {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: rgba(0,0,0,0.5);
-        color: white;
-        padding: 3px 6px;
-        font-size: 12px;
-        border-radius: 4px;
-      }
-      
-      /* Navigation controls for fallback mode */
-      .fallback-navigation {
-        position: absolute;
-        bottom: 20px;
-        left: 0;
-        right: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 16px;
-        z-index: 100;
-      }
-      
-      .fallback-navigation .nav-button {
-        background: rgba(255, 255, 255, 0.2);
-        border: none;
-        color: white;
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-        cursor: pointer;
-        transition: background 0.3s;
-      }
-      
-      .fallback-navigation .nav-button:hover:not(:disabled) {
-        background: rgba(255, 255, 255, 0.4);
-      }
-      
-      .fallback-navigation .nav-button:disabled {
-        opacity: 0.3;
-        cursor: not-allowed;
-      }
-      
-      .fallback-navigation .slide-counter {
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 14px;
-      }
-    `;
-    document.head.appendChild(style);
-    
-    return () => {
-      document.head.removeChild(style);
-    };
-  }, [isMounted]);
-
-  // Function to handle PDF export
-  const handleExportPDF = () => {
-    if (deckRef.current) {
-      addDebug("Preparing PDF export");
-      
-      // The recommended approach for PDF export is to open a special print URL
-      // Create a print stylesheet link element
-      const printStylesheet = document.createElement('link');
-      printStylesheet.rel = 'stylesheet';
-      printStylesheet.type = 'text/css';
-      printStylesheet.href = '/reveal.js-assets/pdf.css'; // Use our own PDF print stylesheet
-      
-      // Add a print-pdf class to the body to trigger print styles
-      document.body.classList.add('print-pdf');
-      
-      // Add the print stylesheet
-      document.head.appendChild(printStylesheet);
-      
-      // Give styles time to apply
-      setTimeout(() => {
-        // Open browser print dialog
-        window.print();
-        
-        // Clean up after printing
-        setTimeout(() => {
-          // Remove print stylesheet
-          printStylesheet.remove();
-          
-          // Remove print-pdf class
-          document.body.classList.remove('print-pdf');
-          
-          // Call the callback if provided
-          if (onExportPDF) {
-            onExportPDF();
-          }
-          
-          addDebug("PDF export completed");
-        }, 1000);
-      }, 500);
-    } else {
-      addDebug("Cannot export PDF: Reveal deck not initialized");
-    }
-  };
-
-  // Effect to initialize Reveal.js
-  useEffect(() => {
-    if (!isMounted || !revealDivRef.current || !isFullyProcessed || slidesData.length === 0) {
-       // Clean up previous instance if we are skipping after being initialized
-       if (deckRef.current) {
-          addDebug("Cleaning up previous deck before skipping init...");
-          try { deckRef.current.destroy(); } catch(e) {}
-          deckRef.current = null;
-       }
-       // Don't change render mode if it's already set to something other than loading
-       if (renderMode === 'loading') {
-         addDebug("Skipping Reveal.js initialization (conditions not met)");
-       }
-       return;
-    }
-    
-    // Only try to initialize if we're in loading mode
-    if (renderMode !== 'loading') {
-      addDebug(`Skipping Reveal.js initialization (render mode is ${renderMode})`);
+    // Only try to initialize if we have slides data
+    if (slidesData.length === 0) {
+      addDebug("No slides data available for initialization");
       return;
     }
 
-    addDebug("Starting Reveal.js initialization...");
-    
-    const initializeReveal = async () => {
-      try {
-        // Simple dynamic import with minimal configuration
-        const Reveal = (await import('reveal.js')).default;
-        const Highlight = (await import('reveal.js/plugin/highlight/highlight')).default;
-        
-        // Check for null again just before creating the instance
-        if (!revealDivRef.current) {
-          addDebug("Reveal container ref is null, cannot initialize");
-          throw new Error("Reveal container ref is null");
-        }
-        
-        addDebug("Creating new Reveal instance with minimal configuration");
-        const deck = new Reveal(revealDivRef.current, {
-          // --- Core Embed & Sizing Configuration --- 
-          embedded: true, 
-          width: 960,    // Standard width (adjust if needed)
-          height: 540,   // Standard 16:9 height (adjust if needed)
-          margin: 0.04,  // Recommended margin for embedded decks
-          minScale: 0.2, // Allow scaling down
-          maxScale: 1.5, // Allow scaling up
-          // --- Controls & Navigation --- 
-          controls: true,        
-          controlsTutorial: true, 
-          progress: true,
-          slideNumber: true, 
-          hash: false, // Disable hash updates for embedding
-          center: true, // Center slides vertically?
-          // --- Appearance & Behavior --- 
-          transition: 'slide',
-          // --- Plugins --- 
-          plugins: [ Highlight ],
-          // --- PDF Settings --- 
-          pdfSeparateFragments: false,
-          pdfMaxPagesPerSlide: 1,
-        });
+    // Wait for DOM to be fully ready
+    setTimeout(() => {
+      if (!isFullyProcessed) {
+        addDebug("Slides not fully processed yet, waiting...");
+        return;
+      }
 
-        // Initialize with error catching
+      // Previous initialization might be in progress or failed
+      if (renderMode !== 'loading') {
+        addDebug(`Not initializing, already in ${renderMode} mode`);
+        return;
+      }
+
+      addDebug("Starting Reveal.js initialization...");
+    
+      const initializeReveal = async () => {
         try {
-          addDebug("Calling Reveal.initialize()");
+          addDebug("Importing Reveal.js modules...");
+          const Reveal = (await import('reveal.js')).default;
+          const Highlight = (await import('reveal.js/plugin/highlight/highlight')).default;
+          
+          addDebug("Reveal.js modules imported successfully");
+          
+          // Make sure the DOM is ready before initializing
+          if (!revealDivRef.current) {
+            addDebug("RevealDiv ref is not available, forcing to fallback mode");
+            setRenderMode('fallback');
+            return;
+          }
+          
+          addDebug("Creating new Reveal instance...");
+          const deck = new Reveal(revealDivRef.current, {
+            embedded: true, 
+            width: 960, height: 540, margin: 0.04,
+            minScale: 0.2, maxScale: 1.5,
+            hash: false, center: true, 
+            controls: true, controlsTutorial: false, progress: true, slideNumber: 'c/t',
+            transition: 'slide', 
+            plugins: [ Highlight ],
+            pdfSeparateFragments: false,
+          });
+
+          addDebug("Calling deck.initialize()...");
           await deck.initialize();
           addDebug("Reveal initialized successfully");
           
-          // Try to force layout
-          try {
-            deck.layout();
-            addDebug("Reveal layout() called successfully");
-          } catch (layoutError) {
-            addDebug(`Layout error: ${layoutError}`);
-          }
+          // Apply layout explicitly after a delay to ensure DOM has updated
+          setTimeout(() => {
+            try { 
+              deck.layout(); 
+              addDebug("Reveal layout() called after delay."); 
+            } catch (layoutError) { 
+              addDebug(`Layout error: ${layoutError}`); 
+            }
+          }, 200);
 
-          // Save reference and update state
           deckRef.current = deck;
           setRenderMode('reveal');
-          
-          // Call onReady callback
-          if (onReady) {
-            addDebug("Calling onReady callback");
-            onReady();
-          }
-          
-          // Clear fallback timer
-          if (fallbackTimerRef.current) {
-            clearTimeout(fallbackTimerRef.current);
-            fallbackTimerRef.current = null;
-          }
-        } catch (initError) {
-          // If initialize fails, throw error for the outer catch block
-          throw new Error(`Initialize failed: ${initError}`);
-        }
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        addDebug(`Failed to initialize Reveal.js: ${errorMsg}`);
-        
-        // Fall back to basic mode if Reveal initialization fails
-        setRenderMode('fallback');
-        
-        // Still call onReady since we're showing content in fallback mode
-        if (onReady) {
-          addDebug("Calling onReady in fallback mode");
-          onReady();
-        }
-      }
-    };
-
-    // Start initialization
-    initializeReveal();
-
-    // Cleanup function
-    return () => {
-      if (fallbackTimerRef.current) {
-        clearTimeout(fallbackTimerRef.current);
-        fallbackTimerRef.current = null;
-      }
-      
-      if (deckRef.current) {
-        addDebug("Cleaning up Reveal instance (effect cleanup)");
-        try {
-          deckRef.current.destroy();
-          deckRef.current = null;
-        } catch (e) {
-          addDebug(`Error destroying Reveal instance: ${e}`);
-        }
-      }
-    };
-  }, [isMounted, isFullyProcessed, slidesData, renderMode, onReady]);
-
-  // Basic fallback renderer component
-  const FallbackRenderer = () => {
-    if (!slidesData.length) return null;
-    
-    // Show all slides in fallback mode with simple navigation
-    const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-    const currentSlide = slidesData[currentSlideIndex];
-    
-    const goToNextSlide = () => {
-      if (currentSlideIndex < slidesData.length - 1) {
-        setCurrentSlideIndex(currentSlideIndex + 1);
-      }
-    };
-    
-    const goToPrevSlide = () => {
-      if (currentSlideIndex > 0) {
-        setCurrentSlideIndex(currentSlideIndex - 1);
-      }
-    };
-    
-    // Add keyboard navigation support
-    useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-        if (e.key === 'ArrowRight' || e.key === 'Space') {
-          goToNextSlide();
-        } else if (e.key === 'ArrowLeft') {
-          goToPrevSlide();
+          if (onReady) { onReady(); }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          addDebug(`Failed to initialize Reveal.js: ${errorMsg}`);
+          console.error('RevealPresentation initialization error:', error);
+          // Fall back to simpler renderer on error
+          setRenderMode('fallback');
         }
       };
-      
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [currentSlideIndex]);
+
+      initializeReveal();
+    }, 100); // Short delay to ensure DOM is ready
+
+    return () => {
+      if (deckRef.current) {
+        addDebug("Cleaning up Reveal instance (effect cleanup)");
+        try { deckRef.current.destroy(); } catch (e) { addDebug(`Error destroying Reveal: ${e}`); }
+        deckRef.current = null;
+      }
+    };
+  }, [isMounted, isFullyProcessed, slidesData.length]); // Remove renderMode dependency to prevent loop
+
+  // Function to handle PDF export using browser print
+  const handleExportPDF = () => {
+    if (renderMode !== 'reveal' || !deckRef.current) {
+      addDebug("Cannot export PDF: Not in reveal mode or deck not initialized.");
+      return; 
+    }
+    addDebug("Preparing PDF export via window.print()...");
     
-    return (
-      <div className="fallback-slides">
-        <div className={`fallback-slide ${currentSlide.layout}`}>
-          {/* Show image with proper layout positioning */}
-          {currentSlide.imageUrl && (
-            <img 
-              src={currentSlide.imageUrl} 
-              alt="Slide visual" 
-              className={`slide-image ${currentSlide.layout}`}
-            />
-          )}
-          
-          {/* Show loading indicator if still loading image */}
-          {currentSlide.imageLoading && (
-            <div className="image-loading-indicator">
-              <Loader2 className="h-8 w-8 text-gray-400 animate-spin" />
-              <p className="text-sm text-gray-400">Loading image...</p>
-            </div>
-          )}
-          
-          <div 
-            className="content"
-            dangerouslySetInnerHTML={{ __html: currentSlide.html }}
-          />
-          
-          {/* Navigation controls */}
-          <div className="fallback-navigation">
-            <button 
-              onClick={goToPrevSlide}
-              disabled={currentSlideIndex === 0}
-              className="nav-button prev"
-              aria-label="Previous slide"
-            >
-              ←
-            </button>
-            <span className="slide-counter">
-              {currentSlideIndex + 1} / {slidesData.length}
-            </span>
-            <button 
-              onClick={goToNextSlide}
-              disabled={currentSlideIndex === slidesData.length - 1}
-              className="nav-button next"
-              aria-label="Next slide"
-            >
-              →
-            </button>
-          </div>
-          
-          {/* Layout indicator for debugging */}
-          {debug && (
-            <div className="layout-indicator">
-              Layout: {currentSlide.layout}
-            </div>
-          )}
-        </div>
-      </div>
-    );
+    const printStylesheet = document.createElement('link');
+    printStylesheet.rel = 'stylesheet';
+    printStylesheet.type = 'text/css';
+    printStylesheet.href = '/reveal.js-assets/pdf.css'; 
+    document.head.appendChild(printStylesheet);
+    document.body.classList.add('print-pdf');
+    
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        try { printStylesheet.remove(); } catch(e){}
+        document.body.classList.remove('print-pdf');
+        if (onExportPDF) onExportPDF();
+        addDebug("PDF export print dialog finished.");
+      }, 1000);
+    }, 500);
   };
 
-  // Debug panel
-  const DebugPanel = () => {
-    if (!debug) return null;
-    
-    return (
-      <div className="fixed bottom-0 left-0 right-0 bg-black bg-opacity-90 text-white p-2 max-h-48 overflow-y-auto z-50 text-xs">
-        <div className="mb-1 font-bold">Debug Info:</div>
-        <div className="mb-1">Mode: {renderMode} | Processed: {isFullyProcessed ? 'Yes' : 'No'} | Slides: {slidesData.length}</div>
-        {debugInfo.map((msg, i) => (
-          <div key={i} className="opacity-80">{msg}</div>
-        ))}
-      </div>
-    );
-  };
+  // --- Render Logic --- 
 
-  // Show loading indicator
+  // Loading State
   if (renderMode === 'loading') {
     return (
       <>
-        <div className="h-full w-full flex items-center justify-center bg-black">
-          <div className="text-center">
-            <Loader2 className="h-16 w-16 text-gray-300 animate-spin mx-auto mb-4" />
-            <p className="text-gray-300 text-lg font-medium">
-              {!isFullyProcessed ? "Processing Slides..." : "Preparing Presentation..."}
-            </p>
-            <p className="text-gray-400 text-sm mt-2">
-              {isFullyProcessed ? "Almost there..." : "Please wait..."}
-            </p>
-          </div>
-        </div>
-        <DebugPanel />
+        <div className="h-full w-full flex flex-col items-center justify-center bg-black text-white">
+          <Loader2 className="w-12 h-12 animate-spin mb-4" />
+          <h3 className="text-xl font-medium mb-2">Loading Presentation</h3>
+          <p className="text-sm text-white/70">Initializing slide layouts and content...</p>
+          {slidesData.length > 0 && (
+            <div className="mt-4 text-sm">
+              Processed {slidesData.length} slides, finalizing display...
+            </div>
+          )}
+      </div>
+        {actualDebug && <DebugPanel debugInfo={debugInfo} renderMode={renderMode} isFullyProcessed={isFullyProcessed} slidesCount={slidesData.length} />}
       </>
     );
   }
-  
-  // Show error state
+
+  // Error State
   if (renderMode === 'error') {
     return (
       <>
         <div className="h-full w-full flex items-center justify-center bg-black">
-          <div className="text-center max-w-lg px-4">
-            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-white text-xl font-bold mb-2">Presentation Error</h2>
-            <p className="text-gray-300 mb-4">{errorMessage || "An unknown error occurred"}</p>
-            <p className="text-gray-400 text-sm">
-              Try refreshing the page or contact support if the issue persists.
-            </p>
-          </div>
-        </div>
-        <DebugPanel />
+           {/* Consistent Error Display */}
+      </div>
+        {actualDebug && <DebugPanel debugInfo={debugInfo} renderMode={renderMode} isFullyProcessed={isFullyProcessed} slidesCount={slidesData.length} />}
       </>
     );
   }
   
-  // Show fallback renderer if Reveal.js failed to initialize
+  // Fallback Renderer State
   if (renderMode === 'fallback') {
     return (
       <>
-        <FallbackRenderer />
-        <DebugPanel />
+        <FallbackRenderer slidesData={slidesData} debug={actualDebug} />
+        {actualDebug && <DebugPanel debugInfo={debugInfo} renderMode={renderMode} isFullyProcessed={isFullyProcessed} slidesCount={slidesData.length} />}
       </>
     );
   }
   
-  // Render Reveal structure with conditional layouts
+  // Reveal.js State (RenderMode === 'reveal')
   return (
-    <div className="reveal-presentation-container" style={style}>
-      {/* Add custom CSS if using a custom theme */}
+    <div className="reveal-presentation-container h-full w-full relative" style={style}>
       {customCSS && <style>{customCSS}</style>}
       
-      {(renderMode as string) === 'loading' && (
-        <div className="loading-container">
-          <div className="loading-spinner">
-            <Loader2 className="h-16 w-16 text-primary animate-spin" />
-            <p>Loading your presentation...</p>
-          </div>
-        </div>
-      )}
-      
-      {(renderMode as string) === 'fallback' && (
-        <FallbackRenderer />
-      )}
-      
-      {(renderMode as string) === 'error' && (
-        <div className="error-container">
-          <div className="error-message">
-            <AlertCircle className="h-12 w-12 text-destructive" />
-            <h3>Error Loading Presentation</h3>
-            {errorMessage && <p>{errorMessage}</p>}
-          </div>
-        </div>
-      )}
+      {/* Add specific layout CSS for different layouts */}
+      <style jsx global>{`
+        /* Layout styling */
+        .reveal .slides section {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          height: 100%;
+          text-align: left;
+        }
+        
+        /* Background layout with image */
+        .reveal .slides section.layout-background .image-container {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 0;
+        }
+        
+        .reveal .slides section.layout-background .image-container img {
+          opacity: 0.7;
+        }
+        
+        .reveal .slides section.layout-background .content-container {
+          position: relative;
+          z-index: 10;
+          text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        /* Split Left Layout - Content on left, image on right */
+        .reveal .slides section.layout-split-left .content-container {
+        position: relative;
+          z-index: 5;
+          margin-right: 50%;
+        }
+        
+        .reveal .slides section.layout-split-left .image-container {
+          position: absolute;
+          top: 0;
+          right: 0;
+          width: 48%;
+        height: 100%;
+          z-index: 5;
+        }
+        
+        /* Split Right Layout - Content on right, image on left */
+        .reveal .slides section.layout-split-right .content-container {
+          position: relative;
+          z-index: 5;
+          margin-left: 50%;
+        }
+        
+        .reveal .slides section.layout-split-right .image-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+          width: 48%;
+          height: 100%;
+          z-index: 5;
+        }
+        
+        /* Common image styling for split layouts */
+        .reveal .slides section.layout-split-left .image-container img,
+        .reveal .slides section.layout-split-right .image-container img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+          border-radius: 8px;
+        }
+        
+        /* Text-only layout centered content */
+        .reveal .slides section.layout-text-only .content-container {
+          width: 100%;
+          max-width: 90%;
+        margin: 0 auto;
+        }
+        
+        /* Typography improvements */
+        .reveal .slides section h1, 
+        .reveal .slides section h2, 
+        .reveal .slides section h3 {
+          margin-bottom: 0.5em;
+          text-transform: none;
+        }
+        
+        .reveal .slides section ul {
+          display: block;
+          margin-left: 2em;
+          text-align: left;
+        }
+        
+        .reveal .slides section li {
+          margin: 0.5em 0;
+          display: list-item;
+        }
+
+        /* Style-specific styling */
+        /* Formal & Professional */
+        .reveal .slides section.formal-professional-style {
+          background-color: #1a365d;
+          color: #ffffff;
+        }
+        
+        .reveal .slides section.formal-professional-style h1,
+        .reveal .slides section.formal-professional-style h2 {
+          font-weight: 600;
+          margin-bottom: 1.5rem;
+        }
+        
+        .reveal .slides section.formal-professional-style .content-container {
+          padding: 2rem;
+        }
+        
+        /* Casual & Friendly */
+        .reveal .slides section.casual-friendly-style {
+          background-color: #f9f7f3;
+          color: #333333;
+        }
+        
+        .reveal .slides section.casual-friendly-style h1,
+        .reveal .slides section.casual-friendly-style h2 {
+          color: #ff6347;
+          font-weight: 500;
+        }
+        
+        .reveal .slides section.casual-friendly-style .content-container {
+          padding: 1.5rem;
+          font-size: 1.1em;
+        }
+        
+        /* Modern & Dynamic */
+        .reveal .slides section.modern-dynamic-style {
+          background-color: #121212;
+          color: #ffffff;
+        }
+        
+        .reveal .slides section.modern-dynamic-style .image-container img {
+          opacity: 0.7;
+          filter: saturate(0.8) contrast(1.1);
+        }
+        
+        .reveal .slides section.modern-dynamic-style .content-container {
+          background-color: rgba(0, 0, 0, 0.7);
+          padding: 2rem;
+          border-radius: 8px;
+          margin: 1rem;
+          width: calc(100% - 2rem);
+        }
+        
+        .reveal .slides section.modern-dynamic-style h1,
+        .reveal .slides section.modern-dynamic-style h2 {
+          color: #3d9df0;
+          text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Classic & Traditional */
+        .reveal .slides section.classic-traditional-style {
+          background-color: #f5f0e8;
+          color: #333333;
+        }
+        
+        .reveal .slides section.classic-traditional-style h1,
+        .reveal .slides section.classic-traditional-style h2 {
+          font-family: Georgia, serif;
+          color: #8b4513;
+        }
+        
+        .reveal .slides section.classic-traditional-style .content-container {
+          font-family: Georgia, serif;
+          font-size: 1.05em;
+          line-height: 1.6;
+        }
+        
+        /* Clean & Minimalist */
+        .reveal .slides section.clean-minimalist-style {
+          background-color: #ffffff;
+          color: #212121;
+        }
+        
+        .reveal .slides section.clean-minimalist-style h1,
+        .reveal .slides section.clean-minimalist-style h2 {
+          font-weight: 300;
+          letter-spacing: 0.05em;
+        }
+        
+        .reveal .slides section.clean-minimalist-style .content-container {
+          padding: 2rem;
+          font-weight: 300;
+        }
+      `}</style>
       
       <div 
         ref={revealDivRef} 
-        className="reveal" 
-        style={{ 
-          visibility: (renderMode as string) === 'reveal' ? 'visible' : 'hidden',
-          display: (renderMode as string) === 'reveal' ? 'block' : 'none'
-        }}
+        className="reveal w-full h-full" 
       >
-        <div className="slides">
+      <div className="slides">
           {slidesData.map((slide, index) => (
-            <section 
-              key={index} 
-              className={`slide-${index} layout-${slide.layout}`}
-              data-background-color={slide.backgroundColor}
-              data-color={slide.textColor}
-            >
-              {(slide.layout === 'background' || slide.layout === 'split-left' || slide.layout === 'split-right') && slide.imageUrl && (
-                <div className="image-container">
-                  <img src={slide.imageUrl} alt="Slide background" />
+          <section 
+            key={index}
+              className={`slide-${index} layout-${slide.layout} ${slide.style || ''}-style`}
+            data-background-color={slide.backgroundColor}
+            style={{
+              color: slide.textColor || (customTheme ? customTheme.color : undefined),
+              fontFamily: slide.fontFamily || (customTheme ? customTheme.fontFamily : undefined)
+            }}
+          >
+              {/* Background Image Layout */}
+              {slide.layout === 'background' && slide.imageUrl && (
+                <div className="image-container absolute top-0 left-0 w-full h-full z-0">
+                  <img 
+                    src={slide.imageUrl} 
+                    alt="Slide background" 
+                    className="object-cover w-full h-full opacity-40"
+                  />
                 </div>
               )}
-              <div className="content-container" dangerouslySetInnerHTML={{ __html: slide.html }} />
-            </section>
-          ))}
+              
+              {/* Split Left Layout - Image on right */}
+              {slide.layout === 'split-left' && slide.imageUrl && (
+                <div className="image-container">
+                  <img 
+                    src={slide.imageUrl} 
+              alt="Slide visual" 
+                    className="object-cover w-full h-full"
+                  />
+                </div>
+              )}
+              
+              {/* Split Right Layout - Image on left */}
+              {slide.layout === 'split-right' && slide.imageUrl && (
+                <div className="image-container">
+                  <img 
+                    src={slide.imageUrl} 
+                    alt="Slide visual" 
+                    className="object-cover w-full h-full"
+                  />
+            </div>
+          )}
+          
+          <div 
+                className="content-container p-8 flex flex-col justify-center"
+                style={{ 
+                  fontFamily: slide.fontFamily || (customTheme ? customTheme.fontFamily : undefined),
+                  height: '100%'
+                }}
+                dangerouslySetInnerHTML={{ __html: slide.html }}
+              />
+          </section>
+        ))}
+          </div>
+            </div>
+      
+      {/* Custom Controls */}
+      <div className="custom-controls absolute bottom-4 right-4 flex gap-2 z-20">
+        <Button variant="outline" size="icon" onClick={() => deckRef.current?.prev()} disabled={!deckRef.current}>
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <Button variant="outline" size="icon" onClick={() => deckRef.current?.next()} disabled={!deckRef.current}>
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+        {onExportPDF && (
+          <Button variant="outline" onClick={handleExportPDF} className="export-pdf-button" disabled={!deckRef.current}>
+            <FileText className="h-5 w-5 mr-1" /> PDF
+          </Button>
+          )}
         </div>
+
+      {actualDebug && <DebugPanel debugInfo={debugInfo} renderMode={renderMode} isFullyProcessed={isFullyProcessed} slidesCount={slidesData.length} />}
+      </div>
+    );
+  };
+
+// Update FallbackRenderer to also use the improved layout handling
+const FallbackRenderer: React.FC<{ slidesData: SlideDataInternal[], debug?: boolean }> = ({ slidesData, debug }) => {
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  if (!slidesData || slidesData.length === 0) return <div>No slides to display.</div>;
+  const currentSlide = slidesData[currentSlideIndex];
+
+  const goToNext = () => setCurrentSlideIndex(i => Math.min(i + 1, slidesData.length - 1));
+  const goToPrev = () => setCurrentSlideIndex(i => Math.max(i - 1, 0));
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') goToNext();
+      else if (e.key === 'ArrowLeft') goToPrev();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [slidesData.length]);
+
+    return (
+    <div className="fallback-slides w-full h-full bg-gray-900 text-white relative overflow-hidden">
+      <style>{`
+        .fallback-slide.layout-background .content {
+          position: relative;
+          z-index: 10;
+          width: 100%;
+          text-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        
+        .fallback-slide.layout-split-left .content {
+          margin-right: 45%;
+          text-align: left;
+          margin-left: 5%;
+        }
+        
+        .fallback-slide.layout-split-right .content {
+          margin-left: 45%;
+          text-align: left;
+          margin-right: 5%;
+        }
+        
+        .fallback-slide.layout-text-only .content {
+          max-width: 80%;
+          margin: 0 auto;
+        }
+        
+        .fallback-slide h1, .fallback-slide h2, .fallback-slide h3 {
+          margin-bottom: 0.5em;
+        }
+        
+        .fallback-slide ul {
+          text-align: left;
+          margin-left: 1.5em;
+        }
+      `}</style>
+      
+      <div className={`fallback-slide w-full h-full p-8 flex items-center justify-center layout-${currentSlide.layout}`}
+           style={{
+             backgroundColor: currentSlide.backgroundColor || '#111',
+             color: currentSlide.textColor || 'white',
+             fontFamily: currentSlide.fontFamily,
+           }}> 
+        {/* Background Layout */}
+        {currentSlide.layout === 'background' && currentSlide.imageUrl && (
+          <img 
+            src={currentSlide.imageUrl} 
+            alt="Slide background" 
+            className="absolute inset-0 w-full h-full object-cover opacity-40 z-0"
+          />
+        )}
+        
+        {/* Split Left Layout - Image on right */}
+        {currentSlide.layout === 'split-left' && currentSlide.imageUrl && (
+          <img 
+            src={currentSlide.imageUrl} 
+            alt="Slide visual" 
+            className="absolute top-0 right-0 w-1/2 h-full object-cover z-0"
+          />
+        )}
+        
+        {/* Split Right Layout - Image on left */}
+        {currentSlide.layout === 'split-right' && currentSlide.imageUrl && (
+          <img 
+            src={currentSlide.imageUrl} 
+            alt="Slide visual" 
+            className="absolute top-0 left-0 w-1/2 h-full object-cover z-0"
+          />
+      )}
+      
+      <div 
+          className="content relative z-10" 
+          style={{ fontFamily: currentSlide.fontFamily }}
+          dangerouslySetInnerHTML={{ __html: currentSlide.html }} 
+        />
       </div>
       
-      {/* Add custom navigation controls that will always be visible */}
-      {(renderMode as string) !== 'loading' && (
-        <div className="custom-controls">
-          <button onClick={() => deckRef.current?.prev()} disabled={!deckRef.current}>
+      {/* Fallback Navigation */} 
+      <div className="fallback-navigation absolute bottom-5 left-1/2 transform -translate-x-1/2 flex items-center gap-4 z-20">
+        <Button variant="outline" size="icon" onClick={goToPrev} disabled={currentSlideIndex === 0}>
             <ChevronLeft className="h-5 w-5" />
-          </button>
-          <button onClick={() => deckRef.current?.next()} disabled={!deckRef.current}>
+        </Button>
+        <span className="slide-counter text-sm text-white/70">{currentSlideIndex + 1} / {slidesData.length}</span>
+        <Button variant="outline" size="icon" onClick={goToNext} disabled={currentSlideIndex === slidesData.length - 1}>
             <ChevronRight className="h-5 w-5" />
-          </button>
-          <button onClick={handleExportPDF} disabled={!deckRef.current}>
-            <FileText className="h-5 w-5" />
-          </button>
+        </Button>
         </div>
-      )}
-
-      {debug && (
-        <DebugPanel />
-      )}
+      
+      {debug && <div className="absolute top-2 right-2 bg-black/50 px-2 py-1 text-xs rounded z-30">
+        Fallback Mode - Layout: {currentSlide.layout}
+      </div>}
     </div>
   );
 };
 
+// Debug Panel Component (Simplified)
+const DebugPanel: React.FC<{ debugInfo: string[], renderMode: string, isFullyProcessed: boolean, slidesCount: number }> = 
+  ({ debugInfo, renderMode, isFullyProcessed, slidesCount }) => (
+  <div className="fixed bottom-0 left-0 right-0 bg-black/80 text-white p-2 max-h-40 overflow-y-auto z-[999] text-xs font-mono">
+    <div>Mode: {renderMode} | Processed: {isFullyProcessed ? 'Yes' : 'No'} | Slides: {slidesCount}</div>
+    {debugInfo.map((msg, i) => <div key={i} className="opacity-80">{msg}</div>)}
+  </div>
+);
+
 export { RevealPresentation };
+// Ensure dynamic import for client-side execution
 export default dynamic(() => Promise.resolve(RevealPresentation), { ssr: false }); 

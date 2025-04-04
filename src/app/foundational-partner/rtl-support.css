@@ -1,0 +1,17 @@
+.rtl {
+  direction: rtl;
+  text-align: right;
+}
+
+.rtl .prose {
+  text-align: right;
+}
+
+.rtl button {
+  font-family: inherit;
+}
+
+/* Fix for cards in RTL mode */
+.rtl .grid {
+  direction: rtl;
+} 

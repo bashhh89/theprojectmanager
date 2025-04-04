@@ -33,7 +33,8 @@ const nextConfig = {
   env: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
     OPENAI_ORG_ID: process.env.OPENAI_ORG_ID || '',
-    NEXT_PUBLIC_PORT: '3002'
+    NEXT_PUBLIC_PORT: '3003',
+    SERPER_API_KEY: process.env.SERPER_API_KEY || 'c6fa01a9e3f82dea3113ac50dcb3fea0e34617c4'
   },
   experimental: {
     serverActions: {
@@ -45,7 +46,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `http://localhost:3002/api/:path*`,
+        destination: `http://localhost:3003/api/:path*`,
       },
     ]
   },

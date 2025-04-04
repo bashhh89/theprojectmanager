@@ -16,8 +16,20 @@ interface ChatMessagesProps {
   theme?: string;
 }
 
+interface MessageContent {
+  type: 'text' | 'image';
+  content: string;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string | MessageContent[];
+  timestamp: number;
+}
+
 export function ChatMessages({ theme }: ChatMessagesProps) {
-  const messages = useChatStore(state => state.getActiveChatMessages())
+  const messages = useChatStore(state => state.getActiveChatMessages()) as ChatMessage[]
   const isGenerating = useChatStore(state => state.isGenerating)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const activeChatId = useChatStore(state => state.activeChatId)
@@ -200,10 +212,15 @@ export function ChatMessages({ theme }: ChatMessagesProps) {
     const messageKey = `msg-${activeChatId}-${index}`;
     const msgAudioState = audioState[messageKey] || { isLoading: false, isPlaying: false };
     
-    const textContent = message.content
-                               .filter(item => item.type === "text")
-                               .map(item => item.content)
-                               .join(" ");
+    // Handle both string content and structured content
+    const textContent = typeof message.content === 'string' 
+      ? message.content 
+      : Array.isArray(message.content)
+        ? message.content
+            .filter((item: MessageContent) => item.type === "text")
+            .map((item: MessageContent) => item.content)
+            .join(" ")
+        : '';
 
     return (
       <div 
@@ -236,103 +253,78 @@ export function ChatMessages({ theme }: ChatMessagesProps) {
             
             {/* Message content */}
             <div className="space-y-4">
-              {message.content.map((item, itemIndex) => (
-                <Fragment key={itemIndex}>
-                  {item.type === "text" && (
-                    <div className="prose prose-sm dark:prose-invert max-w-none">
-                      {item.content.split('\n').map((line, i) => (
-                        <Fragment key={i}>
-                          {line}
-                          {i < item.content.split('\n').length - 1 && <br />}
-                        </Fragment>
-                      ))}
-                    </div>
-                  )}
-                  
-                  {/* Image rendering */}
-                  {item.type === "image" && item.content !== "placeholder" && (
-                    <img 
-                      src={item.content} 
-                      alt="Generated image" 
-                      className="rounded-md max-w-full h-auto border border-border"
-                      loading="lazy" // Add lazy loading for images
-                      onError={(e) => {
-                        logError({
-                          error: 'Image failed to load',
-                          context: 'Message Display',
-                          additionalData: { src: item.content }
-                        });
-                        e.currentTarget.src = '/placeholder-image.png'; // Add a placeholder image
-                      }}
-                    />
-                  )}
-                  
-                  {item.type === "image" && item.content === "placeholder" && (
-                    <div className="p-6 bg-background rounded-md border border-border text-sm text-muted-foreground flex items-center justify-center">
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Generating image...
-                    </div>
-                  )}
-                </Fragment>
-              ))}
+              {typeof message.content === 'string' ? (
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  {message.content.split('\n').map((line, i) => (
+                    <Fragment key={i}>
+                      {line}
+                      {i < message.content.split('\n').length - 1 && <br />}
+                    </Fragment>
+                  ))}
+                </div>
+              ) : Array.isArray(message.content) ? (
+                message.content.map((item, itemIndex) => (
+                  <Fragment key={itemIndex}>
+                    {item.type === "text" && (
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        {item.content.split('\n').map((line, i) => (
+                          <Fragment key={i}>
+                            {line}
+                            {i < item.content.split('\n').length - 1 && <br />}
+                          </Fragment>
+                        ))}
+                      </div>
+                    )}
+                  </Fragment>
+                ))
+              ) : null}
             </div>
-            
-            {/* Audio Controls - Only for assistant messages */}
-            {!isUser && textContent && (
-              <div className="flex items-center gap-2 mt-2 pt-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+
+            {/* Message actions */}
+            <div className="flex items-center gap-2 mt-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleCopy(textContent)}
+                className="h-8 w-8"
+              >
+                <CopyIcon className="h-4 w-4" />
+              </Button>
+              
+              {!isUser && (
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={() => handleAudioToggle(messageKey, textContent)}
+                  className="h-8 w-8"
                   disabled={msgAudioState.isLoading}
                 >
                   {msgAudioState.isLoading ? (
-                    <><Loader2 className="h-3 w-3 mr-1 animate-spin"/> Loading audio...</>
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : msgAudioState.isPlaying ? (
-                    <><PauseCircle className="h-3 w-3 mr-1"/> Pause audio</>
+                    <PauseCircle className="h-4 w-4" />
                   ) : (
-                    <><PlayCircle className="h-3 w-3 mr-1"/> Listen</>
+                    <PlayCircle className="h-4 w-4" />
                   )}
                 </Button>
-                
-                {msgAudioState.audioUrl && (
-                  <a 
-                    href={msgAudioState.audioUrl} 
-                    download={`message_${index}_audio.mp3`}
-                    className="flex items-center h-8 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors"
-                  >
-                    <Download className="h-3 w-3 mr-1" />
-                    Download
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex-shrink-0 space-x-2">
-            <button
-              onClick={() => handleCopy(message.content.map(c => c.content).join('\n'))}
-              className="p-2 hover:bg-secondary rounded-lg transition-colors"
-              title="Copy message"
-            >
-              <CopyIcon className="w-4 h-4" />
-            </button>
-            {failedMessages.includes(index) && (
-              <button
-                onClick={() => handleRetry(index)}
-                disabled={retrying === index}
-                className="p-2 hover:bg-secondary rounded-lg transition-colors text-red-500"
-                title="Retry sending"
-              >
-                {retrying === index ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-current" />
-                ) : (
-                  <RefreshCwIcon className="w-4 h-4" />
-                )}
-              </button>
-            )}
+              )}
+              
+              {failedMessages.includes(index) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => handleRetry(index)}
+                  className="h-8 w-8"
+                  disabled={retrying === index}
+                >
+                  {retrying === index ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCwIcon className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>

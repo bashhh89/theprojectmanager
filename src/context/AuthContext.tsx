@@ -90,7 +90,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log("AuthProvider: Safety timeout reached, forcing loading to false");
         setLoading(false);
       }
-    }, 3000); // 3 second timeout
+    }, 7000); // Increased timeout to 7 seconds
     
     // 1. Check for initial session
     supabase.auth.getSession().then(({ data: { session } }) => {

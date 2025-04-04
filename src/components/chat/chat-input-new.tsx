@@ -11,6 +11,7 @@ import { showError, showSuccess, showInfo } from '@/components/ui/toast';
 import { logError } from '@/utils/errorLogging';
 import { cn } from '@/lib/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { processMessage } from '@/lib/prompt-service';
 
 // Types for saved prompts
 interface SavedPrompt {
@@ -57,17 +58,13 @@ const savePromptToStorage = (prompts: SavedPrompt[]) => {
   }
 };
 
-// Add a ChatInputProps interface to match what chat-interface expects
 interface ChatInputProps {
-  onSubmit: (content: string) => void;
-  isGenerating?: boolean;
+  onSubmit: (message: string) => void;
+  ref: React.RefObject<HTMLTextAreaElement>;
 }
 
 // Add forwardRef to make the input ref accessible from parent
-export const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>(({ onSubmit }, forwardedRef) => {
-  const internalRef = useRef<HTMLTextAreaElement>(null);
-  const textareaRef = (forwardedRef || internalRef) as React.RefObject<HTMLTextAreaElement>;
-
+export function ChatInput({ onSubmit, ref }: ChatInputProps) {
   const { sendRequest } = useMcpRequest();
   const addMessage = useChatStore(state => state.addMessage);
   const setIsGenerating = useChatStore(state => state.setIsGenerating);
@@ -103,7 +100,7 @@ export const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>((
   // Watch for window resize to adjust the height of textarea
   useEffect(() => {
     function handleResize() {
-      if (textareaRef.current) {
+      if (ref.current) {
         adjustTextareaHeight();
       }
     }
@@ -114,19 +111,19 @@ export const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>((
   
   // Adjust height after component mounts
   useEffect(() => {
-    if (textareaRef.current) {
+    if (ref.current) {
       adjustTextareaHeight();
     }
   }, []);
   
   // Focus textarea on component mount
   useEffect(() => {
-    textareaRef.current?.focus();
+    ref.current?.focus();
   }, []);
   
   // Adjust the height of the textarea based on its content
   const adjustTextareaHeight = () => {
-    const textarea = textareaRef.current;
+    const textarea = ref.current;
     if (!textarea) return;
     
     // Reset height to auto to get the correct scrollHeight
@@ -170,14 +167,14 @@ export const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>((
   const handleCommandSelect = (command: string) => {
     setValue(command + ' ');
     setShowCommands(false);
-    textareaRef.current?.focus();
+    ref.current?.focus();
   };
   
   // Handle selecting a saved prompt
   const handlePromptSelect = (prompt: SavedPrompt) => {
     setValue(prompt.prompt);
     setShowPrompts(false);
-    textareaRef.current?.focus();
+    ref.current?.focus();
     adjustTextareaHeight();
   };
   
@@ -314,37 +311,17 @@ export const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>((
     // Handle form submission with Enter (but not with Shift+Enter)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
-    }
-  };
-  
-  // Enhanced submit handler
-  const handleSubmit = async () => {
-    const trimmedValue = value.trim();
-    
-    if (!trimmedValue) return;
-
-    try {
-      // Add to command history
-      setCommandHistory(prev => [trimmedValue, ...prev.slice(0, 49)]);
-      setHistoryIndex(-1);
-
-      // Handle submission
-      await onSubmit(trimmedValue);
-      setValue('');
-      adjustTextareaHeight();
-    } catch (error) {
-      logError({
-        error: error instanceof Error ? error.toString() : 'Failed to submit message',
-        context: 'Chat Input Submit'
-      });
-      showError('Failed to send message');
+      const trimmedValue = value.trim();
+      if (trimmedValue) {
+        onSubmit(trimmedValue);
+        setValue('');
+      }
     }
   };
   
   // Render the input component
   return (
-    <div className="relative w-full max-w-4xl mx-auto">
+    <div className="relative">
       {/* Save prompt dialog */}
       {showSavePromptDialog && (
         <div className="absolute bottom-full mb-4 w-full bg-zinc-800 border border-zinc-700 rounded-lg p-4 z-20">
@@ -444,13 +421,19 @@ export const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>((
       
       <div className="relative flex items-end border border-zinc-700/75 rounded-lg bg-zinc-800/50 focus-within:border-zinc-600 p-2">
         <textarea
-          ref={textareaRef}
+          ref={ref}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="Message AI assistant... (Ctrl+Up/Down for history)"
           className="w-full resize-none bg-transparent border-none outline-none text-zinc-100 placeholder-zinc-500 py-2 px-2 min-h-[50px] max-h-[200px] overflow-y-auto"
+          style={{
+            minHeight: '44px',
+            maxHeight: '200px',
+            overflowY: 'auto',
+            overscrollBehavior: 'contain'
+          }}
           rows={1}
         />
         
@@ -478,7 +461,13 @@ export const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>((
           
           {/* Send button */}
           <button
-            onClick={handleSubmit}
+            onClick={() => {
+              const trimmedValue = value.trim();
+              if (trimmedValue) {
+                onSubmit(trimmedValue);
+                setValue('');
+              }
+            }}
             disabled={!value.trim()}
             className={`p-2 rounded-md ${
               value.trim() ? 'text-zinc-200 hover:bg-zinc-700' : 'text-zinc-500'
@@ -513,4 +502,4 @@ export const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>((
       )}
     </div>
   );
-});
+}

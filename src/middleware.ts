@@ -5,10 +5,24 @@ import type { NextRequest } from 'next/server';
 export default function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();
   
+  // Check for auth-related cookies and ensure they are preserved
+  const authCookie = request.cookies.get('supabase-auth-token');
+  
   // Redirect /projects/create to /projects/new
   if (url.pathname === '/projects/create') {
     url.pathname = '/projects/new';
-    return NextResponse.redirect(url);
+    const response = NextResponse.redirect(url);
+    
+    // Preserve auth cookies in redirects
+    if (authCookie) {
+      response.cookies.set('supabase-auth-token', authCookie.value, {
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/'
+      });
+    }
+    
+    return response;
   }
   
   return NextResponse.next();

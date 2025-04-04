@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .search-container {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        input {
+            flex-grow: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px 0 0 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #357ae8;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .result-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+        .result-title {
+            color: #1a0dab;
+            font-size: 18px;
+            margin-bottom: 5px;
+        }
+        .result-url {
+            color: #006621;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .result-snippet {
+            font-size: 14px;
+            color: #545454;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .loading {
+            display: none;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>Search API Test</h1>
+    <p>Enter a search query to test the API:</p>
+    
+    <div class="search-container">
+        <input type="text" id="query" placeholder="Enter search query...">
+        <button onclick="search()">Search</button>
+    </div>
+    
+    <div id="loading" class="loading">Searching...</div>
+    <div id="error" class="error"></div>
+    <div id="results" class="results"></div>
+
+    <script>
+        async function search() {
+            const query = document.getElementById('query').value;
+            const resultsDiv = document.getElementById('results');
+            const errorDiv = document.getElementById('error');
+            const loadingDiv = document.getElementById('loading');
+            
+            if (!query) {
+                errorDiv.textContent = 'Please enter a search query';
+                return;
+            }
+            
+            errorDiv.textContent = '';
+            resultsDiv.innerHTML = '';
+            loadingDiv.style.display = 'block';
+            
+            try {
+                const apiUrl = 'http://localhost:3003/api/search';
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query, limit: 5 })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(`API error: ${error.error} - ${error.details || ''}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.results || data.results.length === 0) {
+                    resultsDiv.innerHTML = '<p>No results found</p>';
+                } else {
+                    const results = data.results.map(result => `
+                        <div class="result-item">
+                            <div class="result-title"><a href="${result.url}" target="_blank">${result.title}</a></div>
+                            <div class="result-url">${result.url}</div>
+                            <div class="result-snippet">${result.snippet}</div>
+                        </div>
+                    `).join('');
+                    
+                    resultsDiv.innerHTML = `
+                        <h2>Search Results for "${query}"</h2>
+                        ${results}
+                    `;
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                errorDiv.textContent = error.message || 'An error occurred while searching';
+            } finally {
+                loadingDiv.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html> 
