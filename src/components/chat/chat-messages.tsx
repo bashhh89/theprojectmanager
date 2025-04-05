@@ -205,126 +205,114 @@ export function ChatMessages({ theme }: ChatMessagesProps) {
     );
   }
 
-  // Render individual message
+  // Message rendering with improved formatting
   const renderMessage = ({ index, style }: { index: number, style: React.CSSProperties }) => {
     const message = messages[index];
-    const isUser = message.role === "user";
-    const messageKey = `msg-${activeChatId}-${index}`;
-    const msgAudioState = audioState[messageKey] || { isLoading: false, isPlaying: false };
-    
-    // Handle both string content and structured content
-    const textContent = typeof message.content === 'string' 
-      ? message.content 
-      : Array.isArray(message.content)
-        ? message.content
-            .filter((item: MessageContent) => item.type === "text")
-            .map((item: MessageContent) => item.content)
-            .join(" ")
-        : '';
+    const messageKey = `${message.id}-${index}`;
+    const audioStateForMessage = audioState[messageKey] || { isLoading: false, isPlaying: false };
 
     return (
       <div 
-        style={style}
+        style={style} 
         className={cn(
-          "py-5 px-4 md:px-8", 
-          !isUser && "bg-muted/40",
-          failedMessages.includes(index) && 'border-red-500 border'
+          "group relative mb-4 flex items-start md:mb-6",
+          message.role === "user" ? "justify-end" : "justify-start"
         )}
       >
-        <div className="max-w-3xl mx-auto flex gap-4 items-start">
-          {/* Avatar */}
+        <div className={cn(
+          "flex flex-col w-full max-w-[90%] md:max-w-[80%]",
+          message.role === "user" ? "items-end" : "items-start"
+        )}>
           <div className={cn(
-            "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-            isUser ? "bg-primary/10 text-primary" : "bg-primary text-primary-foreground"
+            "flex items-center space-x-2 mb-2",
+            message.role === "user" ? "flex-row-reverse space-x-reverse" : "flex-row"
           )}>
-            {isUser ? (
-              <User className="w-5 h-5" />
-            ) : (
-              <Bot className="w-5 h-5" />
-            )}
+            {message.role === "user" ? <UserIcon className="h-6 w-6" /> : <BotIcon className="h-6 w-6" />}
+            <span className="text-sm text-muted-foreground">
+              {new Date(message.timestamp).toLocaleTimeString()}
+            </span>
           </div>
 
-          {/* Content */}
-          <div className="flex-1 space-y-2">
-            {/* Role label */}
-            <div className="text-sm font-medium">
-              {isUser ? "You" : "QanDuAI"}
-            </div>
-            
-            {/* Message content */}
-            <div className="space-y-4">
-              {typeof message.content === 'string' ? (
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  {message.content.split('\n').map((line, i) => (
-                    <Fragment key={i}>
-                      {line}
-                      {i < message.content.split('\n').length - 1 && <br />}
-                    </Fragment>
-                  ))}
-                </div>
-              ) : Array.isArray(message.content) ? (
-                message.content.map((item, itemIndex) => (
-                  <Fragment key={itemIndex}>
-                    {item.type === "text" && (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        {item.content.split('\n').map((line, i) => (
-                          <Fragment key={i}>
-                            {line}
-                            {i < item.content.split('\n').length - 1 && <br />}
-                          </Fragment>
-                        ))}
-                      </div>
+          <div className={cn(
+            "flex flex-col space-y-2 rounded-lg px-4 py-3 w-full",
+            message.role === "user" 
+              ? "bg-primary text-primary-foreground" 
+              : "bg-muted"
+          )}>
+            <div className="prose dark:prose-invert max-w-none w-full">
+              {Array.isArray(message.content) ? (
+                message.content.map((item, i) => (
+                  <div key={i} className="space-y-4 [&>p]:my-4 [&>table]:my-6">
+                    {item.type === 'text' && (
+                      <div 
+                        className="whitespace-pre-wrap [&>table]:border [&>table]:border-border [&>table>thead>tr>th]:p-3 [&>table>tbody>tr>td]:p-3"
+                        dangerouslySetInnerHTML={{ __html: item.content }}
+                      />
                     )}
-                  </Fragment>
+                    {item.type === 'image' && (
+                      <img src={item.content} alt="Generated" className="rounded-lg" />
+                    )}
+                  </div>
                 ))
-              ) : null}
+              ) : (
+                <div 
+                  className="whitespace-pre-wrap [&>table]:border [&>table]:border-border [&>table>thead>tr>th]:p-3 [&>table>tbody>tr>td]:p-3"
+                  dangerouslySetInnerHTML={{ __html: message.content as string }}
+                />
+              )}
             </div>
+          </div>
 
-            {/* Message actions */}
-            <div className="flex items-center gap-2 mt-2">
+          <div className={cn(
+            "flex items-center space-x-2 mt-2",
+            message.role === "user" ? "justify-end" : "justify-start"
+          )}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => handleCopy(Array.isArray(message.content) 
+                ? message.content.map(item => item.type === 'text' ? item.content : '').join('\n')
+                : message.content as string
+              )}
+            >
+              <CopyIcon className="h-4 w-4" />
+            </Button>
+            {message.role === "assistant" && (
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => handleCopy(textContent)}
-                className="h-8 w-8"
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => handleAudioToggle(messageKey, Array.isArray(message.content) 
+                  ? message.content.map(item => item.type === 'text' ? item.content : '').join('\n')
+                  : message.content as string
+                )}
+                disabled={audioStateForMessage.isLoading}
               >
-                <CopyIcon className="h-4 w-4" />
+                {audioStateForMessage.isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : audioStateForMessage.isPlaying ? (
+                  <PauseCircle className="h-4 w-4" />
+                ) : (
+                  <Volume2 className="h-4 w-4" />
+                )}
               </Button>
-              
-              {!isUser && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleAudioToggle(messageKey, textContent)}
-                  className="h-8 w-8"
-                  disabled={msgAudioState.isLoading}
-                >
-                  {msgAudioState.isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : msgAudioState.isPlaying ? (
-                    <PauseCircle className="h-4 w-4" />
-                  ) : (
-                    <PlayCircle className="h-4 w-4" />
-                  )}
-                </Button>
-              )}
-              
-              {failedMessages.includes(index) && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleRetry(index)}
-                  className="h-8 w-8"
-                  disabled={retrying === index}
-                >
-                  {retrying === index ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCwIcon className="h-4 w-4" />
-                  )}
-                </Button>
-              )}
-            </div>
+            )}
+            {failedMessages.includes(index) && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => handleRetry(index)}
+                disabled={retrying === index}
+              >
+                {retrying === index ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCwIcon className="h-4 w-4" />
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </div>
